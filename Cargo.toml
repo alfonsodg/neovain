@@ -1,0 +1,19 @@
+[package]
+name = "neovain"
+version = "0.1.0"
+edition = "2021"
+description = "Transactional vim-keystroke editing for AI agents, powered by headless Neovim"
+readme = "README.md"
+keywords = ["neovim", "vim", "agents", "llm", "editor"]
+categories = ["command-line-utilities", "text-editors"]
+rust-version = "1.74"
+
+[dependencies]
+serde_json = "1"
+similar = "2"
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
