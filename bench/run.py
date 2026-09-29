@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -99,6 +100,57 @@ def stream_commands(path: Path):
                         yield "shell", b["input"].get("command", "")
                     elif b["name"] in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
                         yield "tool", b["name"]
+
+
+# A neovain call whose output the agent never sees. Only the pipeline the call itself is in
+# counts, not a later command on the same line, and only what really hides the output:
+# /dev/null, a filter that drops lines, or head/tail with fewer than 20 lines. Redirecting
+# stderr alone, or cutting long lines with cut, does not count.
+TO_NULL = re.compile(r"(?<![0-9&])>\s*/dev/null|&>\s*/dev/null|1>\s*/dev/null")
+FILTERED = re.compile(r"\|\s*(grep|egrep|rg|wc|awk|sed)\b")
+HEAD_TAIL = re.compile(r"\|\s*(head|tail)\b(?:\s+-n)?\s*-?(\d+)?")
+
+
+def own_pipeline(script: str, start: int) -> str:
+    """The text of the pipeline that starts at `start`, with everything inside quotes left out."""
+    out, quote, i = [], None, start
+    while i < len(script):
+        ch = script[i]
+        if quote:
+            if ch == "\\" and quote != "'" and i + 1 < len(script):
+                i += 1
+            elif ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch in ";\n" or script.startswith("&&", i) or script.startswith("||", i):
+            break
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def output_discarded(command: str) -> bool:
+    script = command
+    if re.match(r"^\S*(bash|sh)\s+-l?c\s", command):  # Codex wraps every command in a shell call
+        try:
+            script = shlex.split(command)[2]
+        except (ValueError, IndexError):
+            pass
+    call = NEOVAIN_CALL.search(script)
+    if not call or "--help" in script:
+        return False
+    rest = own_pipeline(script, call.start())
+    if TO_NULL.search(rest) or FILTERED.search(rest):
+        return True
+    cut = HEAD_TAIL.search(rest)
+    return bool(cut) and int(cut.group(2) or 10) < 20
+
+
+def discarded_calls(path: Path) -> int:
+    """How many neovain calls in a run log threw their output away."""
+    return sum(1 for kind, text in stream_commands(path) if kind == "shell" and output_discarded(text))
 
 
 def scan_violations(path: Path, arm: str) -> list[str]:
@@ -238,6 +290,7 @@ def parse_stream(path: Path, arm: str) -> dict:
         "tools": tool_counts,
         "edit_calls": edit_calls,
         "edit_failed": edit_failed,
+        "edits_discarded": discarded_calls(path),
         "violations": len(scan_violations(path, arm)),
         "subtype": result.get("subtype"),
         "model_id": ",".join(sorted(result.get("modelUsage") or {})),
@@ -310,6 +363,7 @@ def parse_codex_stream(path: Path, arm: str) -> dict:
         "tools": counts,
         "edit_calls": edit_calls,
         "edit_failed": edit_failed,
+        "edits_discarded": discarded_calls(path),
         "violations": len(scan_violations(path, arm)),
         "subtype": None,
         "model_id": None,
