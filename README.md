@@ -67,11 +67,25 @@ cursor was on line 1; file unchanged
    and a wrong edit that is still valid vim does not fail.
 5. Use `--dry-run` when unsure.
 
+## Inserting literal text
+
+Normal-mode steps go through Neovim's key notation, so `<Tab>`, `<Del>` or `<Home>` inside
+typed text become keys, and so do HTML tags like `<del>`. For literal text, use the ex
+commands `:a` (append after the cursor line), `:i` (insert before it) or `:c` (replace a
+range). Put the text on the following lines and finish with a line containing only `.`:
+
+```console
+$ neovain page.html '@</main>' $':i\n  <p>New <del>old</del> text</p>\n.'
+$ neovain page.html '@<h1>' $':c\n  <h1>New title</h1>\n.'
+$ neovain new.html $':0a\n<!doctype html>\n<title>New page</title>\n.'
+```
+
+`:0a` writes into an empty file. New and empty files always get LF line endings.
+
 ## Ex-only mode
 
 With `NEOVAIN_EX_ONLY=1`, only `@anchor` and `:ex` steps are accepted. Normal-mode keys,
-`:normal` and `:execute` are rejected. Insert lines with `:call append(line('.'), [...])`
-or `:s` with `\r` in the replacement.
+`:normal` and `:execute` are rejected. Insert text with `:a`, `:i` or `:c` (see above).
 
 ## Install
 
@@ -85,7 +99,9 @@ cargo install --git https://github.com/kbrock84/neovain
 
 MSYS rewrites arguments containing `/…` (e.g. `/pat<CR>`) into Windows paths. Run with
 `MSYS_NO_PATHCONV=1`. neovain detects the mangling and refuses to run, rather than edit the
-wrong thing.
+wrong thing. Note that it also turns off
+conversion of the FILE argument, so pass a relative path or a Windows path (`C:/...`),
+not an MSYS path like `/tmp/x`.
 
 ## Benchmarks
 
