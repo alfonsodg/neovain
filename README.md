@@ -78,7 +78,7 @@ or `:s` with `\r` in the replacement.
 Requires [Neovim](https://neovim.io) 0.9+ on `PATH` (tested with 0.11), or set `NEOVAIN_NVIM`.
 
 ```
-cargo install --path .
+cargo install --git https://github.com/kbrock84/neovain
 ```
 
 ## Windows / Git Bash
@@ -91,3 +91,7 @@ wrong thing.
 
 See [`bench/`](bench/README.md) for the harness comparing neovain against string-replacement
 editing across models, and the results so far.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
