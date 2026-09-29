@@ -11,7 +11,8 @@ The **Neov**im **A**gent **In**terface.
 
 Transactional vim editing for AI agents. One call applies a sequence of vim keystrokes and
 ex commands to a file using headless Neovim. If every step succeeds, the file is written and
-a unified diff is printed. If any step fails, nothing is written.
+a unified diff is printed, or a summary of the changes if the diff is long. If any step fails,
+nothing is written.
 
 ```
 neovain [OPTIONS] FILE STEP [STEP ...]
@@ -24,8 +25,9 @@ neovain [OPTIONS] FILE STEP [STEP ...]
 | `:excmd`      | Ex command: `:%s/old/new/g`, `:g/pat/d`, `:10,20m$`, `:call append(line('.'), ['x'])` |
 | anything else | Normal-mode keys, with `<Esc>`, `<CR>`, `<C-v>` and `<Tab>` notation.            |
 
-Options: `-n/--dry-run` (show the diff, don't write), `-C N` (diff context lines),
-`--sw N` (shiftwidth, default 4), `--timeout SECS`. Put `--` before steps that look like flags.
+Options: `-n/--dry-run` (show the changes, don't write), `--diff auto|full|summary` (what to
+print, see [Output](#output)), `-C N` (diff context lines), `--sw N` (shiftwidth, default 4),
+`--timeout SECS`. Put `--` before steps that look like flags.
 Exit status: `0` ok, `1` a step failed (file unchanged), `2` usage error.
 
 ## Example
@@ -50,6 +52,126 @@ $ neovain app.py '@open(' 'dd'
 FAILED at step 1 "@open(": anchor matched 2 lines (2,6): make the pattern more specific or use @N@
 cursor was on line 1; file unchanged
 ```
+
+## Output
+
+A diff that changes at most 60 lines, and is at most 80 lines long with two lines of context,
+is printed in full. For a longer one neovain prints a summary of at most 80 lines, because a
+2,000-line diff goes unread. `--diff full` always prints the diff, `--diff summary` always
+prints the summary, and both work with `--dry-run`. `-C` sets the context of the diff that is
+printed. It has no part in the choice between the two.
+
+This is the summary of six structural changes to a 2,350-line file, made in one call. Four of
+its ten blocks are shown:
+
+```console
+$ neovain work.py ':%s/\<log_event\>/emit_event/g' ':g/^def debug_/-2,/^\S/-3d' ...
+work.py: +757 -1237 lines in 60 hunks; 2354 -> 1874 lines
+summary (--diff full prints the diff). -N: old line. +N: new line. N: line next to the block, in the new file.
+replaced on 155 lines: log_event -> emit_event (none left)
+deleted 398 lines: 961-1358  (class LegacyExporter:)
+   921:    return total
+  -961:class LegacyExporter:
+  -962:    """Deprecated: CSV export for the v1 CLI."""
+   ...
+  -1357:        self.log_event("parse.score", count=len(tokens))
+  -1358:        return total
+   924:class EventStore:
+inserted 1 line: 938  (with self._lock:)
+   937:        """Synchronize every pending change to the backend."""
+  +938:        with self._lock:
+   939:            total = 0
+reindented 120 lines: 1375-1494 -> 939-1058, indent +4 spaces  (total = 0)
+   938:        with self._lock:
+  +939:            total = 0
+  +940:            total = sum(x.get("owner", 0) for x in tokens)
+   ...
+  +1057:                events = []
+  +1058:            return total
+   1060:    def sample_records(self, files):
+moved 401 lines: 1697-2097 -> 1474-1874  (class ReportBuilder:)
+  down past 211 lines: 1261-1471  (def rank_users(sessions, tokens):)
+   1471:    return total
+  +1474:class ReportBuilder:
+  +1475:    """Builds periodic reports from the event store."""
+   ...
+  +1873:            jobs.pop()
+  +1874:        return total
+   (end of file)
+```
+
+| Line                                        | Meaning                                                         |
+|---------------------------------------------|-----------------------------------------------------------------|
+| `moved N lines: A-B -> C-D`                 | Lines A-B of the old file are lines C-D of the new file. The line below says what the block passed on its way. |
+| `deleted N lines: A-B`                      | Lines A-B of the old file are gone.                             |
+| `inserted N lines: C-D`                     | Lines C-D of the new file are new.                              |
+| `changed N lines to M: A-B -> C-D`          | Lines A-B were replaced by other text, now on lines C-D.        |
+| `reindented N lines: A-B -> C-D, indent +4 spaces` | The same text with other leading whitespace.             |
+| `replaced on N lines: old -> new`           | The same token replacement on N lines, and how many lines still contain `old`. The five most frequent ones are named and the others counted. |
+| `line endings: CRLF -> LF on N lines`       | The same lines with other line endings.                         |
+| `whitespace-only lines changed: N, from +C` | Blank lines with other whitespace in them. C is the first one.  |
+| `trailing whitespace changed on N lines, from +C` | The same text with other whitespace at the end of the line. |
+| `spacing: 1 blank line at 12, was 2`        | A run of blank lines has another length, and that may be meant. |
+| `WARNING: ...`                              | Something that is very likely wrong. See below.                 |
+
+A block starts and ends on a line that is not blank. Its first line follows in parentheses,
+then an excerpt: the line before the block, its first and last lines, and the line after it.
+A moved or deleted block that holds more than one unit says so, as in
+`(def load(path):) +2 more at this indent` for three functions, and the excerpt shows where
+the others start. A moved or re-indented block that holds more or fewer blank lines than
+before gives both sizes, as in `reindented 9 lines to 7`. When the summary would get too
+long, the excerpts get shorter, and then blocks are left out and counted.
+
+The warnings are about the two mistakes that a valid command makes most often:
+
+```
+WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)
+WARNING: no blank line between 1471 and 1472, was 2
+WARNING: 4 blank lines at 147-150, was 2
+reindented 320 lines: 1375-1694 -> 939-1258, indent +4 spaces  (total = 0)
+  WARNING: 8 lines are indented less than the block's first line, from +1060
+```
+
+The first three say that blank lines went to the wrong place. Where two blocks were joined,
+the blank lines between them are compared with the blank lines each block had next to it
+before. The last one says that a range ran past the end of the block it started in: a method
+body that is indented together with the methods after it holds lines indented less than its
+first line, and the first line of the method did not move with them.
+
+A warning is given only where the old file shows what the spacing should be. Next to text
+that is new it does not, so a run of blank lines that changed there is a `spacing:` line at
+most. A line on its own that moved is treated the same way.
+
+Warnings are not kept for the summary. After a diff that is printed in full they follow it,
+below an empty line. A diff with nothing to warn about is followed by nothing.
+
+```console
+$ neovain app.py '@^def save' ':.,/^def main/-1m$'
+--- app.py
++++ app.py
+@@ -3,8 +3,8 @@
+     return data
+ 
++def main():
++    d = load("in.txt")
++    save("out.txt", d)
+ def save(path, data):
+     open(path, "w").write(data)
+ 
+-def main():
+-    d = load("in.txt")
+-    save("out.txt", d)
+
+WARNING: file ends with 2 newlines, was 1 (1 blank line at the end)
+WARNING: no blank line between 7 and 8, was 1
+```
+
+The diff behind a summary and the analysis of the change have two seconds each, and less if
+the run has taken as long as `--timeout` by then. If the time runs out, the first line says
+`about +N -M lines, counted roughly`, a line that starts with `note:` says what is missing,
+and what was found by then is printed. The diff for `--diff full` takes the time it needs.
+
+The summary works on lines and knows nothing about the language of the file.
 
 ## Guarantees
 
@@ -94,12 +216,17 @@ cursor was on line 1; file unchanged
    numbers to the file's spacing: with one blank line between methods, use `-1` and
    `/^    def /-2`. For the last block in a file there is no next line to search for, so end
    the range with `$`.
-6. **Preview, then run.** Add `--dry-run` to see the diff, then send the same command without it.
-7. **Check the result.** A wrong edit that is still valid vim does not fail. Read the diff, and
-   after a large change confirm the structure and the spacing: `rg -n -B3 '^(class|def) '`
-   shows the lines above each top-level block, and `tail -c 50 FILE | od -c` shows how the
-   file ends. To repair spacing, `:%s/\n\{4,}/\r\r\r/e` cuts runs of three or more blank lines
-   down to two, and `:%s/\n\+\%$//e` removes blank lines at the end of the file.
+6. **Preview, then run.** Add `--dry-run` to see the changes, then send the same command
+   without it. `--dry-run --diff full` shows every changed line of a long diff.
+7. **Read the output.** A wrong edit that is still valid vim does not fail. After a large
+   change, neovain prints a [summary](#output) in place of the diff. It names every block
+   that was moved, deleted or re-indented, with its line range, its size and its first line.
+   Compare them with what you meant: a block much larger than you expected is a range that ran
+   too far. Act on every line that starts with `WARNING`, in a summary or below a diff. It
+   says that blank lines were lost or piled up where blocks were joined, that the file ends
+   in blank lines, or that a block ran past the end of the block it started in. To repair
+   spacing, `:%s/\n\{4,}/\r\r\r/e` cuts runs of three or more blank lines down to two, and
+   `:%s/\n\+\%$//e` removes blank lines at the end of the file.
 8. **Quote each step in single quotes.** Backslashes inside single quotes reach neovain as
    written, so write `\<word\>` once, not doubled.
 

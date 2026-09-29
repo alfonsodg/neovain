@@ -1,10 +1,12 @@
-//! neovain: apply vim keystrokes / ex commands to a file with headless Neovim, print a diff.
+//! neovain: apply vim keystrokes / ex commands to a file with headless Neovim, print what changed.
 //!
 //! The whole step sequence runs in one Neovim process. The file is only written if every step
 //! succeeds; the first failing step aborts the run and leaves the file untouched.
 
+mod summary;
+
 use serde_json::{json, Value};
-use similar::TextDiff;
+use similar::{DiffTag, TextDiff};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -12,6 +14,8 @@ use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
 const DRIVER: &str = include_str!("driver.lua");
+/// The lines of context around each change in a diff, unless -C asks for another number.
+const DEFAULT_CONTEXT: usize = 2;
 
 const USAGE: &str = "\
 neovain: transactional vim editing for agents
@@ -25,8 +29,10 @@ Steps (applied in order, stopping at the first failure; file untouched on failur
   anything     normal-mode keys, <Esc>/<CR>/<C-v> notation, e.g. 'ciwnewname<Esc>'
 
 Options:
-  -n, --dry-run      show the diff without writing
+  -n, --dry-run      show the changes without writing
   -C, --context N    diff context lines (default 2)
+      --diff MODE    what to print. auto (default): the diff if it is short, a summary of the
+                     changes if it is long. full: always the diff. summary: always the summary
       --sw N         shiftwidth for > and < when the file indents with spaces (default 4)
       --timeout SECS default 10
   --                 treat everything after as steps (for steps starting with '-')
@@ -44,9 +50,31 @@ struct Args {
     file: PathBuf,
     steps: Vec<String>,
     dry_run: bool,
+    diff: Mode,
     context: usize,
     sw: u32,
     timeout: Duration,
+}
+
+/// What to print after an edit that changed the file.
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    /// The diff if it is short, the summary if it is long.
+    Auto,
+    Full,
+    Summary,
+}
+
+impl std::str::FromStr for Mode {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "auto" => Ok(Mode::Auto),
+            "full" => Ok(Mode::Full),
+            "summary" => Ok(Mode::Summary),
+            _ => Err(()),
+        }
+    }
 }
 
 enum Fail {
@@ -56,7 +84,8 @@ enum Fail {
 
 fn parse_args() -> Result<Option<Args>, String> {
     let mut it = env::args().skip(1);
-    let (mut dry_run, mut context, mut sw, mut timeout) = (false, 2usize, 4u32, 10.0f64);
+    let (mut dry_run, mut context, mut sw, mut timeout) = (false, DEFAULT_CONTEXT, 4u32, 10.0f64);
+    let mut diff = Mode::Auto;
     let mut positional = Vec::new();
     let mut only_steps = false;
     fn value<T: std::str::FromStr>(flag: &str, v: Option<String>) -> Result<T, String> {
@@ -84,6 +113,8 @@ fn parse_args() -> Result<Option<Args>, String> {
             "-C" | "--context" => context = value(&a, it.next())?,
             "--sw" => sw = value(&a, it.next())?,
             "--timeout" => timeout = value(&a, it.next())?,
+            "--diff" => diff = value(&a, it.next())?,
+            s if s.starts_with("--diff=") => diff = value("--diff", s.split_once('=').map(|(_, v)| v.to_string()))?,
             s if s.starts_with("--") => return Err(format!("unknown option {s}")),
             _ => positional.push(a),
         }
@@ -92,7 +123,7 @@ fn parse_args() -> Result<Option<Args>, String> {
         return Err("need FILE and at least one STEP (see --help)".into());
     }
     let file = PathBuf::from(positional.remove(0));
-    Ok(Some(Args { file, steps: positional, dry_run, context, sw, timeout: Duration::from_secs_f64(timeout) }))
+    Ok(Some(Args { file, steps: positional, dry_run, diff, context, sw, timeout: Duration::from_secs_f64(timeout) }))
 }
 
 /// Git Bash/MSYS rewrites args like '/foo<CR>' into 'C:/Program Files/Git/foo<CR>' before we see them.
@@ -188,7 +219,20 @@ fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     fs::rename(&tmp, path)
 }
 
+/// The hunks of a diff printed with `context` lines around each change, and the lines that
+/// takes. The diff is not printed to find out.
+fn shape(diff: &TextDiff<str>, context: usize) -> (usize, usize) {
+    let lines = |op: &similar::DiffOp| match op.tag() {
+        DiffTag::Equal => op.old_range().len(),
+        _ => op.old_range().len() + op.new_range().len(),
+    };
+    let hunks = diff.grouped_ops(context);
+    // Two lines name the file, and one starts each hunk.
+    (hunks.len(), 2 + hunks.iter().map(|hunk| 1 + hunk.iter().map(lines).sum::<usize>()).sum::<usize>())
+}
+
 fn run(a: Args) -> Result<(), Fail> {
+    let started = Instant::now();
     if !a.file.is_file() {
         return Err(Fail::Usage(format!("no such file: {}", a.file.display())));
     }
@@ -237,8 +281,39 @@ fn run(a: Args) -> Result<(), Fail> {
     }
     let (old, new) = (String::from_utf8_lossy(&before), String::from_utf8_lossy(&after));
     let name = a.file.display().to_string();
-    let diff = TextDiff::from_lines(old.as_ref(), new.as_ref());
-    let _ = write!(out, "{}", diff.unified_diff().context_radius(a.context).header(&name, &name));
+    // The diff asked for with `--diff full` is the one 0.1.0 printed, however long it takes.
+    // Any other may give way to the summary, and stops being exact when its time is up. That
+    // is after the time it is given, or when the whole run has taken as long as --timeout.
+    let until = |time: Duration| {
+        let given = Instant::now() + time;
+        started.checked_add(a.timeout).map_or(given, |end| end.min(given))
+    };
+    let (mut config, deadline) = (TextDiff::configure(), until(summary::DIFF_TIME));
+    if a.diff != Mode::Full {
+        config.deadline(deadline);
+    }
+    let diff = config.diff_lines(old.as_ref(), new.as_ref());
+    let rough = a.diff != Mode::Full && Instant::now() >= deadline;
+    let (added, removed) = diff.ops().iter().filter(|op| op.tag() != DiffTag::Equal).fold((0, 0), |(added, removed), op| {
+        (added + op.new_range().len(), removed + op.old_range().len())
+    });
+    // What to print depends on the change, not on the context asked for with -C.
+    let (hunks, lines) = shape(&diff, DEFAULT_CONTEXT);
+    let short = !rough && added + removed <= summary::FULL_DIFF_MAX_CHANGED && lines <= summary::OUTPUT_MAX_LINES;
+    let found = summary::analyze(&old, &new, until(summary::ANALYSIS_TIME));
+    if a.diff == Mode::Full || (a.diff == Mode::Auto && short) {
+        let full = diff.unified_diff().context_radius(a.context).header(&name, &name).to_string();
+        let _ = write!(out, "{full}");
+        // Warnings follow the diff, after an empty line. Without any, this is what 0.1.0 printed.
+        let warnings = summary::warnings(&found);
+        if !warnings.is_empty() {
+            let _ = write!(out, "{}\n{warnings}", if full.ends_with('\n') { "" } else { "\n" });
+        }
+    } else {
+        let hunks = if a.context == DEFAULT_CONTEXT { hunks } else { shape(&diff, a.context).0 };
+        let totals = summary::Totals { added, removed, hunks, rough };
+        let _ = write!(out, "{}", summary::render(&found, &name, &totals));
+    }
     if a.dry_run {
         let _ = writeln!(out, "(dry run, not written)");
     } else {
