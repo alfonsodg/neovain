@@ -25,7 +25,16 @@ DEFAULT_EFFORT = {
     "opus": "medium", "sonnet": "medium",
     "gpt-5.6-sol": "low", "gpt-5.6-terra": "medium", "gpt-5.6-luna": "medium",
 }
-KEEP = ["out_tok", "think_tok", "api_requests", "tool_calls", "edit_calls", "edit_failed", "edits_discarded", "cost_usd"]
+KEEP = ["out_tok", "think_tok", "api_requests", "tool_calls", "edit_calls", "edit_failed", "edits_discarded", "big_calls", "cost_usd"]
+
+
+def tool_version(batch: dict, arm: str):
+    """Which release of the arm's tool the batch ran: neovain from "tool", the others from "tools"."""
+    if arm == "edit":
+        return None
+    if arm in ("neovain", "neovain-ex"):
+        return batch.get("tool", "0.1.0")
+    return batch["tools"][arm]
 
 
 def run_dir(batch_dir: Path, row: dict) -> Path:
@@ -63,8 +72,8 @@ def main():
             out.append({
                 "batch": b["batch"], "agent": agent, "model": row["model"], "model_name": MODEL_NAMES[row["model"]],
                 "effort": row["effort"] if explicit else DEFAULT_EFFORT[row["model"]], "effort_set": explicit,
-                "guidance": None if arm == "edit" else b["guidance"],
-                "tool": None if arm == "edit" else b.get("tool", "0.1.0"),
+                "guidance": b["guidance"] if arm in ("neovain", "neovain-ex") else None,
+                "tool": tool_version(b, arm),
                 "task": row.get("task", "small"), "arm": arm, "ctx_kb": row.get("ctx_kb", 0), "rep": row["rep"],
                 "pass": row["pass"], "code_ok": run.code_ok(row["pass"], row["check"]), "check": row["check"],
                 "violations": violations, "valid": not violations, "scripted_patch": scripted,
