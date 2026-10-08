@@ -129,7 +129,21 @@ WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)
 WARNING: no blank line between 137 and 138, was 2
 reindented 27 lines: 36-62 -> 36-62, indent +4 spaces  (if item.get("stock") is None:)
   WARNING: 2 lines are indented less than the block's first line, from +44
+WARNING: line 2 is indented but no enclosing block starts above it (left behind by a range?)
 ```
+
+A range can also stop too early, and leave the last lines of a block beside a line that
+cannot hold them:
+
+```
+WARNING: line 2 is indented but no enclosing block starts above it (left behind by a range?)
+```
+
+It is printed only where this edit created the situation, so a file that already stood that
+way is not warned about on every change to it. Nothing is parsed: the line above counts as a
+block head if it ends in `:`, `{`, `(`, `[`, `,` or `)`, or starts with a keyword like `def`
+or `if`, and a markdown heading, list item or a line that continues also counts. The warning
+means "look at this line", not "this line is wrong".
 
 The first two say that blank lines went to the wrong place. Where two blocks were joined,
 the blank lines between them are compared with the blank lines each block had next to it
@@ -227,7 +241,8 @@ The summary works on lines and knows nothing about the language of the file.
    Compare them with what you meant: a block much larger than you expected is a range that ran
    too far. Act on every line that starts with `WARNING`, in a summary or below a diff. It
    says that blank lines were lost or piled up where blocks were joined, that the file ends
-   in blank lines, or that a block ran past the end of the block it started in. To repair
+   in blank lines, that a block ran past the end of the block it started in, or that a line
+was left indented with no block above it. To repair
    spacing, `:%s/\n\{4,}/\r\r\r/e` cuts runs of three or more blank lines down to two, and
    `:%s/\n\+\%$//e` removes blank lines at the end of the file.
 8. **Quote each step in single quotes.** Backslashes inside single quotes reach neovain as

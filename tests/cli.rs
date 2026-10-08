@@ -463,3 +463,30 @@ fn changes_that_a_diff_does_not_show_are_in_the_summary() {
     let out = stdout(&o);
     assert!(out.ends_with("in the new file.\nwhitespace-only lines changed: 100, from +2\n"), "{out}");
 }
+
+#[test]
+fn a_range_that_stops_short_warns_about_the_line_left_behind() {
+    if !have_nvim() {
+        return;
+    }
+    let file = "import os\n\n\nclass A:\n    def run(self):\n        return 0\n\nclass B:\n    pass\n";
+    let c = Case::new(file.as_bytes());
+    // "-2" lands on the import instead of on the block's blank lines: class A and its def go
+    // to the end of the file and "return 0" is left behind under the import.
+    let o = c.run(&["@^class A", r":-2,/^\S/-3m$"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(
+        out.contains("WARNING: line 2 is indented but no enclosing block starts above it (left behind by a range?)"),
+        "{out}"
+    );
+    let text = c.text();
+    assert!(text.starts_with("import os\n        return 0\n\nclass B:\n    pass\n"), "{text}");
+
+    // The same move done right leaves nothing behind, and says nothing.
+    let file = "import os\n\n\nclass A:\n    def run(self):\n        return 0\n\nclass B:\n    pass\n";
+    let c = Case::new(file.as_bytes());
+    let o = c.run(&["@^class A", r":.,/^\S/-2m$"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(!stdout(&o).contains("no enclosing block"), "{}", stdout(&o));
+}

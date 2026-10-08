@@ -157,13 +157,19 @@ moved 66 lines: 65-130 -&gt; 126-191  (class Pricing:)
         </tbody>
       </table>
       <p>A block starts and ends on a line that is not blank. Its first line follows in parentheses, then an excerpt: the line before the block, its first and last lines, and the line after it. A moved or deleted block that holds more than one unit says so, as in <code>(def load(path):) +2 more at this indent</code> for three functions, and the excerpt shows where the others start. A moved or re-indented block that holds more or fewer blank lines than before gives both sizes, as in <code>reindented 9 lines to 7</code>. When the summary would get too long, the excerpts get shorter, and then blocks are left out and counted.</p>
-      <p>The warnings are about the two mistakes that a valid command makes most often:</p>
+      <p>The warnings are about the mistakes that a valid command makes most often:</p>
       <div class="pane">
 <pre class="term"><span class="fail">WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)
 WARNING: no blank line between 137 and 138, was 2</span>
 reindented 27 lines: 36-62 -&gt; 36-62, indent +4 spaces  (if item.get("stock") is None:)
-<span class="fail">  WARNING: 2 lines are indented less than the block's first line, from +44</span></pre>
+<span class="fail">  WARNING: 2 lines are indented less than the block's first line, from +44</span>
+<span class="fail">WARNING: line 2 is indented but no enclosing block starts above it (left behind by a range?)</span></pre>
       </div>
+      <p>A range can also stop too early, leaving the last lines of a block beside a line that cannot hold them:</p>
+      <div class="pane">
+<pre class="term"><span class="fail">WARNING: line 2 is indented but no enclosing block starts above it (left behind by a range?)</span></pre>
+      </div>
+      <p>It is printed only where the edit created the situation, so a file that already stood that way is not warned about on every change to it. Nothing is parsed: the line above counts as a block head if it ends in <code>:</code>, <code>{</code>, <code>(</code>, <code>[</code>, <code>,</code> or <code>)</code>, or starts with a keyword like <code>def</code> or <code>if</code>, and a heading, a list item or a line that continues also counts. It means "look at this line", not "this line is wrong".</p>
       <p>The first two say that blank lines went to the wrong place. Where two blocks were joined, the blank lines between them are compared with the blank lines each block had next to it before. The last one says that a range ran past the end of the block it started in: a method body that is indented together with the methods after it holds lines indented less than its first line, and the first line of the method did not move with them.</p>
       <p>A warning is given only where the old file shows what the spacing should be. Next to text that is new it does not, so a run of blank lines that changed there is a <code>spacing:</code> line at most. A line on its own that moved is treated the same way.</p>
       <p>Warnings are not kept for the summary. After a diff that is printed in full they follow it, below an empty line. A diff with nothing to warn about is followed by nothing.</p>
