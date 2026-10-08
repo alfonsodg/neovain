@@ -177,6 +177,10 @@ The summary works on lines and knows nothing about the language of the file.
 - **Transactional.** The first failing step aborts the run: a search miss, an ambiguous or
   missing anchor, or an ex error. The file is left untouched and the output names the
   failing step.
+- **One writer.** A step may not write the file or end Neovim: `:w`, `:wq`, `:x`, `:q`, `ZZ`,
+  `ZQ` and their relatives are rejected as usage errors, because neovain writes the file
+  itself, once every step has succeeded. Neovim edits a copy of it, so a write it does not
+  see coming can only reach that copy.
 - **Literal typing.** Autoindent, formatoptions, textwidth and filetype plugins are all off.
   Text typed in insert mode lands exactly as typed, so write the indentation yourself.
 - **No wraparound.** `wrapscan` is off, so `/pat<CR>` only searches forward from the cursor.

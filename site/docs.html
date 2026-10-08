@@ -220,6 +220,7 @@ WARNING: no blank line between 7 and 8, was 1</span></pre>
       <h2 id="guarantees">Guarantees</h2>
       <ul class="points">
         <li><span><strong>Transactional.</strong> The first failing step (a search miss, an ambiguous or missing anchor, an ex error) aborts the run. The file is not touched.</span></li>
+        <li><span><strong>One writer.</strong> Steps that write the file or end Neovim (<code>:w</code>, <code>:wq</code>, <code>:x</code>, <code>:q</code>, <code>ZZ</code>, <code>ZQ</code>) are rejected as usage errors. neovain writes the file itself, once every step has succeeded, and Neovim works on a copy of it.</span></li>
         <li><span><strong>Literal typing.</strong> Autoindent, formatoptions, textwidth and filetype plugins are off. Text typed in insert mode lands exactly as typed.</span></li>
         <li><span><strong>No wraparound.</strong> <code>wrapscan</code> is off, so <code>/pat&lt;CR&gt;</code> only searches forward from the cursor.</span></li>
         <li><span><strong>Indentation that matches the file.</strong> <code>&gt;</code> and <code>&lt;</code> use tabs if the file already indents with tabs. Otherwise they use <code>--sw</code> spaces (default 4).</span></li>
