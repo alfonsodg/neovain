@@ -251,7 +251,13 @@ $ neovain new.html $':0a\n<!doctype html>\n<title>New page</title>\n.'
 ## Ex-only mode
 
 With `NEOVAIN_EX_ONLY=1`, only `@anchor` and `:ex` steps are accepted. Normal-mode keys,
-`:normal` and `:execute` are rejected. Insert text with `:a`, `:i` or `:c` (see above).
+`:normal` and `:execute` are rejected, and so are the ex commands that leave the buffer:
+`:!`, `:lua`/`:luado`/`:luafile`, `:py*`, `:perl`, `:ruby`, `:source`, `:runtime`,
+`:earlier`/`:later`. Insert text with `:a`, `:i` or `:c` (see above).
+
+**It is a style restriction, not a sandbox.** It exists so the benchmark can measure
+ex-command editing, and it blocks the obvious ways out of the buffer, but ex commands are
+vimscript: `:call system('…')` still runs a shell. Do not use it to run untrusted steps.
 
 ## Install
 

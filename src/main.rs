@@ -44,7 +44,9 @@ Options:
 
 Environment:
   NEOVAIN_NVIM       path to the nvim binary (default: nvim on PATH)
-  NEOVAIN_EX_ONLY=1  allow only @anchor and :ex steps (no normal-mode keys, no :normal)
+  NEOVAIN_EX_ONLY=1  allow only @anchor and :ex steps: no normal-mode keys, no :normal/:execute,
+                     no :!, :lua, :py, :perl, :ruby, :source, :runtime, :earlier/:later.
+                     A style restriction for benchmarks, not a sandbox.
 
 Exit status: 0 success, 1 a step failed or timed out (file unchanged), 2 usage/setup error.
 ";

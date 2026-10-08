@@ -255,7 +255,8 @@ WARNING: no blank line between 7 and 8, was 1</span></pre>
       <p>Where it helps most: moving, deleting, re-indenting and reordering large blocks, and changes that repeat across a file. For a small local change, exact string replacement is just as good. See the <a href="/#benchmarks">benchmarks</a>.</p>
 
       <h2 id="ex-only">Ex-only mode</h2>
-      <p>With <code>NEOVAIN_EX_ONLY=1</code>, only anchors and ex commands are accepted. Normal-mode keys, <code>:normal</code> and <code>:execute</code> are rejected, and text goes in with <code>:a</code>, <code>:i</code> or <code>:c</code>. The benchmark harness uses it to test whether keystroke-level editing costs agents extra reasoning.</p>
+      <p>With <code>NEOVAIN_EX_ONLY=1</code>, only anchors and ex commands are accepted. Normal-mode keys, <code>:normal</code> and <code>:execute</code> are rejected, and so are the ex commands that leave the buffer (<code>:!</code>, <code>:lua</code>, <code>:py</code>, <code>:perl</code>, <code>:ruby</code>, <code>:source</code>, <code>:runtime</code>, <code>:earlier</code>/<code>:later</code>). Text goes in with <code>:a</code>, <code>:i</code> or <code>:c</code>. The benchmark harness uses it to test whether keystroke-level editing costs agents extra reasoning.</p>
+      <p><strong>It is a style restriction, not a sandbox:</strong> ex commands are vimscript, so <code>:call system('…')</code> still runs a shell. It is not a filter for untrusted steps.</p>
 
       <h2 id="windows">Windows</h2>
       <p>Under Git Bash, MSYS rewrites arguments that contain <code>/…</code> (like <code>/pat&lt;CR&gt;</code>) into Windows paths. Run neovain with <code>MSYS_NO_PATHCONV=1</code>. neovain detects the mangling and refuses to run rather than edit the wrong thing. With conversion off, pass a relative or Windows-style (<code>C:/…</code>) path for <code>FILE</code>. PowerShell and WSL have none of these issues.</p>
@@ -271,7 +272,7 @@ WARNING: no blank line between 7 and 8, was 1</span></pre>
           <tr><td><code>--timeout SECS</code></td><td>Abort if Neovim takes longer (default 10). The diff behind a summary and the analysis of the change stop at it as well.</td></tr>
           <tr><td><code>--</code></td><td>Treat everything after it as steps, for steps that look like flags.</td></tr>
           <tr><td><code>NEOVAIN_NVIM</code></td><td>Path to the <code>nvim</code> binary.</td></tr>
-          <tr><td><code>NEOVAIN_EX_ONLY=1</code></td><td>Allow only anchors and ex commands.</td></tr>
+          <tr><td><code>NEOVAIN_EX_ONLY=1</code></td><td>Allow only anchors and ex commands, and reject those that leave the buffer (shell, scripts, file writes, quit).</td></tr>
         </tbody>
       </table>
       <p>Exit status: <code>0</code> success, <code>1</code> a step failed or timed out (file unchanged), <code>2</code> usage or setup error.</p>
