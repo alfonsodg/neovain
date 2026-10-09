@@ -677,3 +677,37 @@ fn a_range_that_stops_short_warns_about_the_line_left_behind() {
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(!stdout(&o).contains("no enclosing block"), "{}", stdout(&o));
 }
+
+#[test]
+fn the_summary_sorts_endings_and_only_warns_when_the_file_end_changes() {
+    if !have_nvim() {
+        return;
+    }
+    // Endings bucket: a pure-LF file written as DOS converts every line, and the summary
+    // counts them through the sort in `unseen` (the path clippy rewrote in #7).
+    let lines: String = (1..=3).map(|i| format!("line {i}\n")).collect();
+    let c = Case::new(lines.as_bytes());
+    let o = c.run(&[":set ff=dos", "--diff", "summary"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(out.contains("line endings: LF -> CRLF on 3 lines"), "{out}");
+    assert_eq!(c.text(), lines.replace('\n', "\r\n"));
+
+    // The EOF warning fires only when the count moved: after deleting the empty last line
+    // the file ends with one newline where it ended with two...
+    let c = Case::new(b"alpha\nbeta\n\n");
+    let o = c.run(&[":$d", "--diff", "summary"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(
+        out.contains("WARNING: file ends with 1 newline, was 2"),
+        "{out}"
+    );
+
+    // ...and stays silent when the edit leaves the end alone (the `then_some` path).
+    let c = Case::new(b"alpha\nbeta\n\n");
+    let o = c.run(&[":%s/alpha/omega/", "--diff", "summary"]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(c.text(), "omega\nbeta\n\n");
+    assert!(!stdout(&o).contains("file ends with"), "{}", stdout(&o));
+}

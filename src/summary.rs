@@ -1103,7 +1103,7 @@ fn unseen(old: (&[&str], &[&str]), new: (&[&str], &[&str]), pairs: &[(usize, usi
             count(&mut found.trailing, b);
         }
     }
-    found.endings.sort_by(|a, b| b.2.cmp(&a.2));
+    found.endings.sort_by_key(|a| std::cmp::Reverse(a.2));
     found
 }
 
@@ -1391,8 +1391,8 @@ fn file_warnings(a: &Analysis) -> Vec<String> {
         "WARNING: file ends with {}, was {before}{blank}",
         count(after, "newline")
     );
-    Some(end)
-        .filter(|_| before != after)
+    (before != after)
+        .then_some(end)
         .into_iter()
         .chain(spacing_lines(a, true, MAX_WARNINGS))
         .chain(orphan_lines(a))
