@@ -110,6 +110,37 @@ fn execution_keys_and_files_are_refused_before_neovim() {
 }
 
 #[test]
+fn the_expression_register_is_refused_in_every_form() {
+    // The re-audit's class: `=` evaluates vimscript, with or without a bang, a space, a
+    // modifier or a :g/:v nest around it. Rejected before Neovim starts.
+    let c = Case::new();
+    for step in [
+        ":put =system('id')",
+        ":put! =1",
+        ":put!=system('id')",
+        ":pu!! =1",
+        ":silent put! =system('id')",
+        ":silent! put =1",
+        ":keepjumps put! =1",
+        ":g/^def/put! =system('id')",
+        ":v/^def/put =1",
+    ] {
+        let o = neovain().args(["--safe", "--workspace"]).arg(&c.root).arg(&c.path).arg(step).output().unwrap();
+        assert_eq!(o.status.code(), Some(2), "{step}: {}", stderr(&o));
+        assert!(stderr(&o).contains("expression register"), "{step}: {}", stderr(&o));
+        assert_eq!(c.text(), SAMPLE, "{step}");
+    }
+    // A normal register with the bang is legitimate: it reaches Neovim, which reports the
+    // empty register instead of the profile refusing the step.
+    if have_nvim() {
+        let o = neovain().args(["--safe", "--workspace"]).arg(&c.root).arg(&c.path).arg(":put! a").output().unwrap();
+        assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+        assert!(stderr(&o).contains("E353"), "{}", stderr(&o));
+        assert_eq!(c.text(), SAMPLE);
+    }
+}
+
+#[test]
 fn the_profile_needs_a_workspace_root() {
     let c = Case::new();
     let o = neovain().arg("--safe").arg(&c.path).arg(":%s/a/b/").output().unwrap();

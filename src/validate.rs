@@ -275,9 +275,7 @@ fn safe_ex(cmd: &str) -> Option<&'static str> {
         "m" | "move" | "t" | "co" | "copy" => address_tail(tail),
         "s" | "substitute" => substitute_tail(tail),
         "g" | "v" | "global" | "vglobal" => global_tail(tail),
-        "pu" | "put" if tail.trim_start().starts_with('=') => {
-            Some("the = expression register evaluates vimscript (safe profile)")
-        }
+        "pu" | "put" => put_tail(tail),
         _ => plain_tail(tail),
     }
 }
@@ -290,6 +288,20 @@ fn address_tail(tail: &str) -> Option<&'static str> {
         return Some("this command needs an address and nothing else (safe profile)");
     }
     None
+}
+
+/// `:put` with an optional `!` and then a register: `=` evaluates vimscript, so it is
+/// refused in every form it can be written in -- `:put =x`, `:put! =x`, `:put!=x`, under a
+/// modifier or nested in `:g`. A normal register is a buffer edit like any other.
+fn put_tail(tail: &str) -> Option<&'static str> {
+    let mut rest = tail.trim_start();
+    while let Some(after) = rest.strip_prefix('!') {
+        rest = after.trim_start();
+    }
+    if rest.starts_with('=') {
+        return Some("the = expression register evaluates vimscript (safe profile)");
+    }
+    plain_tail(tail)
 }
 
 /// Chaining is off everywhere: `|` would run a second command this profile never checked.
@@ -399,7 +411,7 @@ use super::*;
     #[test]
     fn the_safe_profile_allows_buffer_edits() {
         for ok in ["@^def", "@2@open(", ":%s/a/b/g", ":1s/a/b/", ":.,$d", ":2m$", ":10,20t$", ":2co$",
-            ":g/^#/d", ":v/^import/d", ":g/^x/s/a/b/", ":g/a\\/b/d", ":put a", ":2y", ":sort u", ":1retab",
+            ":g/^#/d", ":v/^import/d", ":g/^x/s/a/b/", ":g/a\\/b/d", ":put a", ":put! a", ":2y", ":sort u", ":1retab",
             ":silent s/a/b/", ":silent! 1d", ":keepjumps 1,2d", ":/$t/d", ":?a?d", ":'a,'bd", ":1,2join",
             ":u", ":undo", ":c", ":append", ":sort!", ":change", ":g/^t/d", ":s", ":1,+2m$"] {
             assert!(safe_violation(ok).is_none(), "{ok}");
@@ -418,7 +430,9 @@ use super::*;
             ":w", ":wq", ":q", ":w other.txt", ":x", ":read /etc/passwd", ":r !ls", ":e other.txt",
             ":saveas /tmp/x", ":earlier 3f", ":later",
             // expressions and chaining, including nested in :g and through modifiers
-            ":s/a/\\=system('id')/", ":s/a/\\=submatch(0)/e", ":put =system('id')", ":s/a/b/ | !ls",
+            ":s/a/\\=system('id')/", ":s/a/\\=submatch(0)/e", ":put =system('id')", ":put! =1", ":put!=system('id')",
+            ":silent put! =system('id')", ":silent! put =1", ":g/^x/put! =system('id')", ":v/^x/put =1",
+            ":pu!! =1", ":s/a/b/ | !ls",
             ":2d | call system('id')", ":g/^x/!touch Y", ":g/^x/normal ZZ", ":g/^x/call system('id')",
             ":g/^x/s/a/\\=system(1)/", ":g/^x/ | !ls", ":silent lua os.exit(0)", ":silent! call system('1')",
             ":v/^x/!touch Z", ":1,2d|d",
