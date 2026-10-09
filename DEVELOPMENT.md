@@ -52,6 +52,10 @@ merging it. Updated whenever the branch state changes.
   `downloadUrl`, releases and license links). It was outside #4's
   scope; decide whether the deployed fork site should install from the
   fork, then change it in a follow-up.
+- `src/summary.rs` grew to 2506 lines under rustfmt (1683 before,
+  upstream's file), far past the 500-line hook rule. Splitting it by
+  responsibility is its own refactor; #6 records the bypass that
+  keeps staging it.
 - The fork's first release, `v0.2.0`, was published on 2026-10-09 by
   pushing that tag to `.github/workflows/release.yml`; the tag must
   keep matching the `Cargo.toml` version or the workflow refuses it.
@@ -70,3 +74,7 @@ The suite is `cargo test --release` (unit, cli, ex-only, installers,
 safe) plus `python3 bench/export_site.py --check`. CI runs both with
 Neovim required. Neovim 0.9 or newer is the floor; the Rust MSRV is
 1.74.
+
+The code is rustfmt-formatted as of #6, and
+`.github/workflows/fmt.yml` runs `cargo fmt --check` on pushes to
+`main` and `develop` and on pull requests.

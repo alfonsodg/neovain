@@ -58,9 +58,40 @@ const LOOKBACK: usize = 200;
 /// First words of the lines that open a block where the line does not end in `:` or `{`:
 /// Ruby writes `def foo`, C-like languages write `if (x)`.
 const BLOCK_HEADS: &[&str] = &[
-    "if", "else", "elsif", "elif", "unless", "while", "until", "for", "foreach", "do", "def", "class", "module",
-    "begin", "loop", "with", "try", "catch", "finally", "switch", "case", "match", "function", "fn", "struct", "impl",
-    "trait", "enum", "namespace", "object", "interface", "protocol", "record", "union",
+    "if",
+    "else",
+    "elsif",
+    "elif",
+    "unless",
+    "while",
+    "until",
+    "for",
+    "foreach",
+    "do",
+    "def",
+    "class",
+    "module",
+    "begin",
+    "loop",
+    "with",
+    "try",
+    "catch",
+    "finally",
+    "switch",
+    "case",
+    "match",
+    "function",
+    "fn",
+    "struct",
+    "impl",
+    "trait",
+    "enum",
+    "namespace",
+    "object",
+    "interface",
+    "protocol",
+    "record",
+    "union",
 ];
 
 const LEGEND: &str =
@@ -199,14 +230,24 @@ struct Tile {
 /// The lines of a text, and what ends each of them: "\n", "\r\n", or nothing after the last
 /// line. `str::lines` finds the same lines and drops the endings, which are needed here.
 fn split(s: &str) -> (Vec<&str>, Vec<&str>) {
-    let line = |raw: &str| raw.strip_suffix('\n').map_or(raw.len(), |text| text.strip_suffix('\r').unwrap_or(text).len());
-    s.split_inclusive('\n').map(|raw| raw.split_at(line(raw))).unzip()
+    let line = |raw: &str| {
+        raw.strip_suffix('\n').map_or(raw.len(), |text| {
+            text.strip_suffix('\r').unwrap_or(text).len()
+        })
+    };
+    s.split_inclusive('\n')
+        .map(|raw| raw.split_at(line(raw)))
+        .unzip()
 }
 
 /// The newlines at the end of a file: the one that ends its last line that is not blank, and
 /// one for each blank line below it. A line with nothing but whitespace is a blank line.
 fn newlines_at_end(lines: &[&str], ends: &[&str]) -> usize {
-    let blank = lines.iter().rev().take_while(|l| l.trim().is_empty()).count();
+    let blank = lines
+        .iter()
+        .rev()
+        .take_while(|l| l.trim().is_empty())
+        .count();
     let last = (lines.len() - blank).saturating_sub(1);
     ends[last..].iter().filter(|end| !end.is_empty()).count()
 }
@@ -220,8 +261,18 @@ fn width(s: &str) -> usize {
 }
 
 fn rows<'a>(lines: &[&'a str]) -> Vec<Row<'a>> {
-    let row = |(i, l): (usize, &&'a str)| Row { no: i + 1, text: l, core: l.trim(), width: width(l) };
-    lines.iter().enumerate().filter(|(_, l)| !l.trim().is_empty()).map(row).collect()
+    let row = |(i, l): (usize, &&'a str)| Row {
+        no: i + 1,
+        text: l,
+        core: l.trim(),
+        width: width(l),
+    };
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| !l.trim().is_empty())
+        .map(row)
+        .collect()
 }
 
 fn shift<'a>(old: &'a str, new: &'a str) -> Indent<'a> {
@@ -263,7 +314,10 @@ fn tokens(s: &str) -> Vec<&str> {
     out
 }
 
-fn intern<'k>(ids: &mut HashMap<std::borrow::Cow<'k, str>, u32>, key: std::borrow::Cow<'k, str>) -> u32 {
+fn intern<'k>(
+    ids: &mut HashMap<std::borrow::Cow<'k, str>, u32>,
+    key: std::borrow::Cow<'k, str>,
+) -> u32 {
     let next = ids.len() as u32;
     *ids.entry(key).or_insert(next)
 }
@@ -275,7 +329,12 @@ fn align(a: &[u32], b: &[u32], deadline: Instant) -> Vec<(usize, usize)> {
     }
     let mut pairs = Vec::new();
     for op in capture_diff_slices_deadline(Algorithm::Myers, a, b, Some(deadline)) {
-        if let DiffOp::Equal { old_index, new_index, len } = op {
+        if let DiffOp::Equal {
+            old_index,
+            new_index,
+            len,
+        } = op
+        {
             pairs.extend((0..len).map(|k| (old_index + k, new_index + k)));
         }
     }
@@ -290,8 +349,10 @@ fn align(a: &[u32], b: &[u32], deadline: Instant) -> Vec<(usize, usize)> {
 /// diff is needed for this, so it takes the same time however much of the file has changed.
 fn discover<'a>(o: &[Row<'a>], n: &[Row<'a>]) -> Vec<(&'a str, &'a str)> {
     let mut surplus: HashMap<&'a str, i64> = HashMap::new();
-    o.iter().for_each(|r| *surplus.entry(r.core).or_default() += 1);
-    n.iter().for_each(|r| *surplus.entry(r.core).or_default() -= 1);
+    o.iter()
+        .for_each(|r| *surplus.entry(r.core).or_default() += 1);
+    n.iter()
+        .for_each(|r| *surplus.entry(r.core).or_default() -= 1);
 
     // For each hash: the tokens left out of the lines that went, and of the lines that came.
     type Left<'t> = Vec<(&'t str, usize)>;
@@ -299,13 +360,22 @@ fn discover<'a>(o: &[Row<'a>], n: &[Row<'a>]) -> Vec<(&'a str, &'a str)> {
     for (line, count) in surplus.into_iter().filter(|(_, count)| *count != 0) {
         let parts = tokens(line);
         let mut tried: Vec<&str> = Vec::new();
-        for &token in parts.iter().filter(|t| parts.len() <= SWAP_MAX_TOKENS && !t.trim().is_empty()) {
+        for &token in parts
+            .iter()
+            .filter(|t| parts.len() <= SWAP_MAX_TOKENS && !t.trim().is_empty())
+        {
             if tried.contains(&token) {
                 continue;
             }
             tried.push(token);
             let mut hash = DefaultHasher::new();
-            parts.iter().for_each(|&p| if p == token { 0u8.hash(&mut hash) } else { p.hash(&mut hash) });
+            parts.iter().for_each(|&p| {
+                if p == token {
+                    0u8.hash(&mut hash)
+                } else {
+                    p.hash(&mut hash)
+                }
+            });
             let left = &mut holes.entry(hash.finish()).or_default()[usize::from(count < 0)];
             // Two tokens are as good as many: the hash then pairs no line with another.
             let room = left.len() < 2;
@@ -322,7 +392,10 @@ fn discover<'a>(o: &[Row<'a>], n: &[Row<'a>]) -> Vec<(&'a str, &'a str)> {
             *swaps.entry((*from, *to)).or_default() += *a.min(b);
         }
     }
-    let mut found: Vec<_> = swaps.into_iter().filter(|(_, lines)| *lines >= REPEAT_MIN).collect();
+    let mut found: Vec<_> = swaps
+        .into_iter()
+        .filter(|(_, lines)| *lines >= REPEAT_MIN)
+        .collect();
     found.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     found.into_iter().map(|(swap, _)| swap).collect()
 }
@@ -356,7 +429,11 @@ impl<'a> Canon<'a> {
         if !parts.iter().any(|t| self.stands_for.contains_key(*t)) {
             return core.into();
         }
-        parts.into_iter().map(|t| self.stands_for.get(t).copied().unwrap_or(t)).collect::<String>().into()
+        parts
+            .into_iter()
+            .map(|t| self.stands_for.get(t).copied().unwrap_or(t))
+            .collect::<String>()
+            .into()
     }
 }
 
@@ -388,7 +465,11 @@ fn claim_runs(o: &[Row], n: &[Row], ok: &[u32], nk: &[u32], map: &mut Map) -> Ve
         let reach = (1..).take_while(linked).count();
         let len = 1 + (1..=reach).rev().find(|k| only(ok[i + k])).unwrap_or(0);
         (0..len).for_each(|k| map.pair(i + k, j + k));
-        tiles.push(Tile { old: i, new: j, len });
+        tiles.push(Tile {
+            old: i,
+            new: j,
+            len,
+        });
     }
     tiles.sort_by_key(|t| t.new);
     tiles
@@ -397,7 +478,15 @@ fn claim_runs(o: &[Row], n: &[Row], ok: &[u32], nk: &[u32], map: &mut Map) -> Ve
 /// Adds to each tile the rows at its ends that continue it. A common line, like `return x`,
 /// can continue more than one tile. It goes to a tile it touches before one that a blank line
 /// separates it from, and to a tile that stayed before one that moved.
-fn grow(tiles: &mut [Tile], stay: &[bool], o: &[Row], n: &[Row], ok: &[u32], nk: &[u32], map: &mut Map) {
+fn grow(
+    tiles: &mut [Tile],
+    stay: &[bool],
+    o: &[Row],
+    n: &[Row],
+    ok: &[u32],
+    nk: &[u32],
+    map: &mut Map,
+) {
     let mut order: Vec<usize> = (0..tiles.len()).collect();
     order.sort_by_key(|&t| (!stay[t], std::cmp::Reverse(tiles[t].len)));
     // True if no blank line is between row k and the row before it.
@@ -407,10 +496,17 @@ fn grow(tiles: &mut [Tile], stay: &[bool], o: &[Row], n: &[Row], ok: &[u32], nk:
             let tile = &mut tiles[t];
             let way = shift(o[tile.old].text, n[tile.new].text);
             let fits = |i: usize, j: usize, map: &Map| {
-                map.o2n[i].is_none() && map.n2o[j].is_none() && ok[i] == nk[j] && shift(o[i].text, n[j].text) == way
+                map.o2n[i].is_none()
+                    && map.n2o[j].is_none()
+                    && ok[i] == nk[j]
+                    && shift(o[i].text, n[j].text) == way
             };
             let near = |i: usize, j: usize| !touching || (touches(o, i) && touches(n, j));
-            while tile.old > 0 && tile.new > 0 && fits(tile.old - 1, tile.new - 1, map) && near(tile.old, tile.new) {
+            while tile.old > 0
+                && tile.new > 0
+                && fits(tile.old - 1, tile.new - 1, map)
+                && near(tile.old, tile.new)
+            {
                 (tile.old, tile.new, tile.len) = (tile.old - 1, tile.new - 1, tile.len + 1);
                 map.pair(tile.old, tile.new);
             }
@@ -481,14 +577,38 @@ fn heaviest_in_order(tiles: &[Tile], n: &[Row]) -> Vec<bool> {
 }
 
 /// Aligns the rows nobody claimed, between each two tiles that stayed.
-fn align_rest(tiles: &[Tile], stay: &[bool], ok: &[u32], nk: &[u32], map: &mut Map, deadline: Instant) {
-    let ends = Tile { old: ok.len(), new: nk.len(), len: 0 };
+fn align_rest(
+    tiles: &[Tile],
+    stay: &[bool],
+    ok: &[u32],
+    nk: &[u32],
+    map: &mut Map,
+    deadline: Instant,
+) {
+    let ends = Tile {
+        old: ok.len(),
+        new: nk.len(),
+        len: 0,
+    };
     let (mut old_from, mut new_from) = (0, 0);
-    for t in tiles.iter().zip(stay).filter(|(_, s)| **s).map(|(t, _)| t).chain([&ends]) {
-        let a: Vec<usize> = (old_from..t.old).filter(|&i| map.o2n[i].is_none()).collect();
-        let b: Vec<usize> = (new_from..t.new).filter(|&j| map.n2o[j].is_none()).collect();
+    for t in tiles
+        .iter()
+        .zip(stay)
+        .filter(|(_, s)| **s)
+        .map(|(t, _)| t)
+        .chain([&ends])
+    {
+        let a: Vec<usize> = (old_from..t.old)
+            .filter(|&i| map.o2n[i].is_none())
+            .collect();
+        let b: Vec<usize> = (new_from..t.new)
+            .filter(|&j| map.n2o[j].is_none())
+            .collect();
         if !a.is_empty() && !b.is_empty() {
-            let (x, y): (Vec<u32>, Vec<u32>) = (a.iter().map(|&i| ok[i]).collect(), b.iter().map(|&j| nk[j]).collect());
+            let (x, y): (Vec<u32>, Vec<u32>) = (
+                a.iter().map(|&i| ok[i]).collect(),
+                b.iter().map(|&j| nk[j]).collect(),
+            );
             for (p, q) in align(&x, &y, deadline) {
                 map.pair(a[p], b[q]);
             }
@@ -514,7 +634,10 @@ fn dissolve(map: &mut Map) {
                 j += 1;
                 continue;
             };
-            let len = 1 + (1..map.n2o.len() - j).take_while(|k| map.n2o[j + k] == Some(i + k)).count();
+            let len = 1
+                + (1..map.n2o.len() - j)
+                    .take_while(|k| map.n2o[j + k] == Some(i + k))
+                    .count();
             if len <= ISLAND_MAX {
                 let (old, new) = (around(&map.o2n, i, len), around(&map.n2o, j, len));
                 let changed = [old.0, old.1, new.0, new.1].iter().all(|&rows| rows > 0);
@@ -543,7 +666,11 @@ fn replacements(o: &[Row], n: &[Row], map: &Map) -> Vec<Replacement> {
             continue;
         }
         let (x, y) = (tokens(o[i].core), tokens(n[j].core));
-        let mut swaps: Vec<_> = x.iter().zip(&y).filter(|(p, q)| x.len() == y.len() && p != q).collect();
+        let mut swaps: Vec<_> = x
+            .iter()
+            .zip(&y)
+            .filter(|(p, q)| x.len() == y.len() && p != q)
+            .collect();
         swaps.sort();
         swaps.dedup();
         for (from, to) in swaps {
@@ -553,10 +680,14 @@ fn replacements(o: &[Row], n: &[Row], map: &Map) -> Vec<Replacement> {
     // The lines that still hold a token that was replaced: one pass over the new file.
     let mut left: HashMap<&str, usize> = count.keys().map(|(from, _)| (*from, 0)).collect();
     for row in n.iter().take(if left.is_empty() { 0 } else { n.len() }) {
-        let mut held: Vec<&str> = tokens(row.core).into_iter().filter(|t| left.contains_key(t)).collect();
+        let mut held: Vec<&str> = tokens(row.core)
+            .into_iter()
+            .filter(|t| left.contains_key(t))
+            .collect();
         held.sort();
         held.dedup();
-        held.into_iter().for_each(|t| *left.entry(t).or_default() += 1);
+        held.into_iter()
+            .for_each(|t| *left.entry(t).or_default() += 1);
     }
     let mut found: Vec<_> = count.into_iter().collect();
     found.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -596,7 +727,8 @@ fn pieces(rows: &[Row], run: Range<usize>) -> Vec<Range<usize>> {
     let mut out: Vec<Range<usize>> = Vec::new();
     let mut body = false;
     for k in run {
-        let starts = |first: &Row| body && rows[k].no - rows[k - 1].no > 1 && rows[k].width <= first.width;
+        let starts =
+            |first: &Row| body && rows[k].no - rows[k - 1].no > 1 && rows[k].width <= first.width;
         match out.last_mut() {
             Some(piece) if !starts(&rows[piece.start]) => {
                 body |= rows[k].width > rows[piece.start].width;
@@ -620,13 +752,26 @@ fn block<'a>(kind: Kind, old: Option<&[Row]>, new: Option<&[Row]>, after: usize)
         _ => new.or(old),
     };
     // Only a block with a body has units: rows indented more than its first row.
-    let units = whole.filter(|rows| kind != Kind::Reindented && rows.iter().any(|r| r.width > rows[0].width));
+    let units = whole
+        .filter(|rows| kind != Kind::Reindented && rows.iter().any(|r| r.width > rows[0].width));
     let starts = |rows: &[Row]| {
         let head = |pair: &&[Row]| pair[1].width == rows[0].width && pair[1].no - pair[0].no > 1;
-        rows.windows(2).filter(head).map(|pair| pair[1].no).collect()
+        rows.windows(2)
+            .filter(head)
+            .map(|pair| pair[1].no)
+            .collect()
     };
     let (heads, outdented) = (units.map_or(Vec::new(), starts), whole.and_then(outdented));
-    Block { kind, old: old.map(span), new: new.map(span), indent: Indent::Same, after, outdented, passed: None, heads }
+    Block {
+        kind,
+        old: old.map(span),
+        new: new.map(span),
+        indent: Indent::Same,
+        after,
+        outdented,
+        passed: None,
+        heads,
+    }
 }
 
 /// What the block that moved from old row `i` to new row `j` passed on its way: the rows that
@@ -665,10 +810,16 @@ fn blocks<'a>(o: &[Row<'a>], n: &[Row<'a>], map: &Map) -> Vec<Block<'a>> {
             _ => shift(o[h].text, n[j].text) != b.indent,
         })
     };
-    let checked = |first: usize, b: Block<'a>| Block { outdented: b.outdented.filter(|_| ran_past(first, &b)), ..b };
+    let checked = |first: usize, b: Block<'a>| Block {
+        outdented: b.outdented.filter(|_| ran_past(first, &b)),
+        ..b
+    };
 
     // Rows that are in both files: moved, or re-indented where they were.
-    let stayed: Vec<(usize, usize)> = (0..n.len()).filter(stays).filter_map(|j| Some((map.n2o[j]?, j))).collect();
+    let stayed: Vec<(usize, usize)> = (0..n.len())
+        .filter(stays)
+        .filter_map(|j| Some((map.n2o[j]?, j)))
+        .collect();
     let mut j = 0;
     while j < n.len() {
         let Some(i) = map.n2o[j] else {
@@ -678,15 +829,28 @@ fn blocks<'a>(o: &[Row<'a>], n: &[Row<'a>], map: &Map) -> Vec<Block<'a>> {
         let (stay, indent) = (map.stays[j], shift(o[i].text, n[j].text));
         let same = |k: &usize| {
             let (a, b) = (i + k, j + k);
-            b < n.len() && map.n2o[b] == Some(a) && map.stays[b] == stay && shift(o[a].text, n[b].text) == indent
+            b < n.len()
+                && map.n2o[b] == Some(a)
+                && map.stays[b] == stay
+                && shift(o[a].text, n[b].text) == indent
         };
         let len = 1 + (1..).take_while(same).count();
         let (old, new) = (Some(&o[i..i + len]), Some(&n[j..j + len]));
         if !stay {
-            let moved = Block { indent, passed: passed(n, &stayed, i, j), ..block(Kind::Moved, old, new, above(j)) };
+            let moved = Block {
+                indent,
+                passed: passed(n, &stayed, i, j),
+                ..block(Kind::Moved, old, new, above(j))
+            };
             found.push(checked(i, moved));
         } else if indent != Indent::Same {
-            found.push(checked(i, Block { indent, ..block(Kind::Reindented, old, new, above(j)) }));
+            found.push(checked(
+                i,
+                Block {
+                    indent,
+                    ..block(Kind::Reindented, old, new, above(j))
+                },
+            ));
         }
         j += len;
     }
@@ -712,14 +876,27 @@ fn blocks<'a>(o: &[Row<'a>], n: &[Row<'a>], map: &Map) -> Vec<Block<'a>> {
         let prev = gone.start.checked_sub(1).map(paired);
         let next = (gone.end < o.len()).then(|| paired(gone.end));
         // The run of new rows that starts below the row above, or ends above the row below.
-        let start = if gone.start == 0 { Some(0) } else { prev.filter(stays).map(|j| j + 1) };
-        let end = if gone.end == o.len() { Some(n.len()) } else { next.filter(stays) };
+        let start = if gone.start == 0 {
+            Some(0)
+        } else {
+            prev.filter(stays).map(|j| j + 1)
+        };
+        let end = if gone.end == o.len() {
+            Some(n.len())
+        } else {
+            next.filter(stays)
+        };
         let starts = start.and_then(|at| inserted.binary_search_by_key(&at, |run| run.start).ok());
         let ends = end.and_then(|at| inserted.binary_search_by_key(&at, |run| run.end).ok());
         if let Some(k) = [starts, ends].into_iter().flatten().find(|&k| !used[k]) {
             used[k] = true;
             let run = inserted[k].clone();
-            found.push(block(Kind::Changed, Some(&o[gone]), Some(&n[run.clone()]), above(run.start)));
+            found.push(block(
+                Kind::Changed,
+                Some(&o[gone]),
+                Some(&n[run.clone()]),
+                above(run.start),
+            ));
             continue;
         }
         // The place the run left, in the new file: next to a neighbor that stayed, if one did.
@@ -729,12 +906,24 @@ fn blocks<'a>(o: &[Row<'a>], n: &[Row<'a>], map: &Map) -> Vec<Block<'a>> {
             (None, None, None, None) => 0,
         };
         // Two or three units deleted together are reported one by one, more as one block.
-        let units = Some(pieces(o, gone.clone())).filter(|units| units.len() <= SPLIT_MAX).unwrap_or(vec![gone]);
-        let deleted = |unit: Range<usize>| checked(unit.start, block(Kind::Deleted, Some(&o[unit]), None, after));
+        let units = Some(pieces(o, gone.clone()))
+            .filter(|units| units.len() <= SPLIT_MAX)
+            .unwrap_or(vec![gone]);
+        let deleted = |unit: Range<usize>| {
+            checked(
+                unit.start,
+                block(Kind::Deleted, Some(&o[unit]), None, after),
+            )
+        };
         found.extend(units.into_iter().map(deleted));
     }
     for (run, _) in inserted.iter().zip(&used).filter(|(_, used)| !**used) {
-        found.push(block(Kind::Inserted, None, Some(&n[run.clone()]), above(run.start)));
+        found.push(block(
+            Kind::Inserted,
+            None,
+            Some(&n[run.clone()]),
+            above(run.start),
+        ));
     }
     found.sort_by_key(|b| match b.new {
         Some((first, _)) => (first, 0),
@@ -751,11 +940,17 @@ fn blocks<'a>(o: &[Row<'a>], n: &[Row<'a>], map: &Map) -> Vec<Block<'a>> {
 fn spacing(o: &[Row], n: &[Row], map: &Map) -> Vec<Spacing> {
     // The blank lines above row i. None above the first row and below the last one: the ends
     // of a file say nothing about the space between two blocks.
-    let gap = |rows: &[Row], i: usize| (i > 0 && i < rows.len()).then(|| rows[i].no - rows[i - 1].no - 1);
+    let gap =
+        |rows: &[Row], i: usize| (i > 0 && i < rows.len()).then(|| rows[i].no - rows[i - 1].no - 1);
     let mut found = Vec::new();
     if let (Some(a), Some(b)) = (o.first(), n.first()) {
         if a.no != b.no {
-            found.push(Spacing { warn: b.no > a.no, above: 0, now: b.no - 1, was: vec![a.no - 1] });
+            found.push(Spacing {
+                warn: b.no > a.no,
+                above: 0,
+                now: b.no - 1,
+                was: vec![a.no - 1],
+            });
         }
     }
     let mut j = 0;
@@ -765,15 +960,38 @@ fn spacing(o: &[Row], n: &[Row], map: &Map) -> Vec<Spacing> {
             // compared with the run that was there, if there was one. If one of the two is as
             // it was, the text was put next to that run, and nothing is wrong.
             let end = j + (j..n.len()).take_while(|&k| map.n2o[k].is_none()).count();
-            let top = j.checked_sub(1).and_then(|k| Some((n[k].no, gap(n, j)?, gap(o, map.n2o[k]? + 1)?)));
-            let bottom = map.n2o.get(end).and_then(|q| Some((n[end - 1].no, gap(n, end)?, gap(o, (*q)?)?)));
-            let sides: Vec<_> = top.into_iter().chain(bottom).filter(|side| side.2 > 0).collect();
-            let changed = |&(above, now, was): &(usize, usize, usize)| Spacing { warn: false, above, now, was: vec![was] };
-            found.extend(sides.iter().filter(|_| sides.iter().all(|side| side.1 != side.2)).map(changed));
+            let top = j
+                .checked_sub(1)
+                .and_then(|k| Some((n[k].no, gap(n, j)?, gap(o, map.n2o[k]? + 1)?)));
+            let bottom = map
+                .n2o
+                .get(end)
+                .and_then(|q| Some((n[end - 1].no, gap(n, end)?, gap(o, (*q)?)?)));
+            let sides: Vec<_> = top
+                .into_iter()
+                .chain(bottom)
+                .filter(|side| side.2 > 0)
+                .collect();
+            let changed = |&(above, now, was): &(usize, usize, usize)| Spacing {
+                warn: false,
+                above,
+                now,
+                was: vec![was],
+            };
+            found.extend(
+                sides
+                    .iter()
+                    .filter(|_| sides.iter().all(|side| side.1 != side.2))
+                    .map(changed),
+            );
             j = end;
             continue;
         }
-        if let (Some(p), Some(q), Some(now)) = (j.checked_sub(1).and_then(|k| map.n2o[k]), map.n2o[j], gap(n, j)) {
+        if let (Some(p), Some(q), Some(now)) = (
+            j.checked_sub(1).and_then(|k| map.n2o[k]),
+            map.n2o[j],
+            gap(n, j),
+        ) {
             let (warn, mut was): (bool, Vec<usize>) = if q == p + 1 {
                 // The same two lines as before, with other space between them.
                 (false, gap(o, q).into_iter().collect())
@@ -783,7 +1001,10 @@ fn spacing(o: &[Row], n: &[Row], map: &Map) -> Vec<Spacing> {
                 // first row has rows under it, as the first line of a function has.
                 let linked = |k: &usize| map.n2o[*k].is_some_and(|i| map.n2o[k + 1] == Some(i + 1));
                 let first = (0..j - 1).rev().take_while(linked).last().unwrap_or(j - 1);
-                let last = (j..n.len() - 1).take_while(linked).last().map_or(j, |k| k + 1);
+                let last = (j..n.len() - 1)
+                    .take_while(linked)
+                    .last()
+                    .map_or(j, |k| k + 1);
                 let unit = |row: usize, end: usize| row < end && n[row + 1].width > n[row].width;
                 let (above, below) = (unit(first, j - 1), unit(j, last));
                 match (gap(o, p + 1), gap(o, q)) {
@@ -803,7 +1024,12 @@ fn spacing(o: &[Row], n: &[Row], map: &Map) -> Vec<Spacing> {
             };
             was.dedup();
             if !was.is_empty() && !was.contains(&now) {
-                found.push(Spacing { warn, above: n[j - 1].no, now, was });
+                found.push(Spacing {
+                    warn,
+                    above: n[j - 1].no,
+                    now,
+                    was,
+                });
             }
         }
         j += 1;
@@ -815,10 +1041,23 @@ fn spacing(o: &[Row], n: &[Row], map: &Map) -> Vec<Spacing> {
 /// and the blank lines between two rows that were next to each other and still are.
 fn same_lines(o: &[Row], n: &[Row], map: &Map, lines: (usize, usize)) -> Vec<(usize, usize)> {
     let mut pairs = Vec::new();
-    for (j, i) in map.n2o.iter().enumerate().filter_map(|(j, i)| Some((j, (*i)?))) {
-        let shared = if i == 0 || j == 0 { i == j } else { map.n2o[j - 1] == Some(i - 1) };
+    for (j, i) in map
+        .n2o
+        .iter()
+        .enumerate()
+        .filter_map(|(j, i)| Some((j, (*i)?)))
+    {
+        let shared = if i == 0 || j == 0 {
+            i == j
+        } else {
+            map.n2o[j - 1] == Some(i - 1)
+        };
         if shared {
-            let (old, new) = if i == 0 { (0, 0) } else { (o[i - 1].no, n[j - 1].no) };
+            let (old, new) = if i == 0 {
+                (0, 0)
+            } else {
+                (o[i - 1].no, n[j - 1].no)
+            };
             pairs.extend((old + 1..o[i].no).zip(new + 1..n[j].no));
         }
         pairs.push((o[i].no, n[j].no));
@@ -829,7 +1068,11 @@ fn same_lines(o: &[Row], n: &[Row], map: &Map, lines: (usize, usize)) -> Vec<(us
         (None, None) => Some((0, 0)),
         _ => None,
     };
-    pairs.extend(below.into_iter().flat_map(|(old, new)| (old + 1..=lines.0).zip(new + 1..=lines.1)));
+    pairs.extend(
+        below
+            .into_iter()
+            .flat_map(|(old, new)| (old + 1..=lines.0).zip(new + 1..=lines.1)),
+    );
     pairs
 }
 
@@ -844,7 +1087,11 @@ fn unseen(old: (&[&str], &[&str]), new: (&[&str], &[&str]), pairs: &[(usize, usi
     for &(a, b) in pairs {
         let (from, to) = (old.1[a - 1], new.1[b - 1]);
         if from != to && !from.is_empty() && !to.is_empty() {
-            match found.endings.iter_mut().find(|e| (e.0, e.1) == (name(from), name(to))) {
+            match found
+                .endings
+                .iter_mut()
+                .find(|e| (e.0, e.1) == (name(from), name(to)))
+            {
                 Some((.., lines)) => *lines += 1,
                 None => found.endings.push((name(from), name(to), 1)),
             }
@@ -865,7 +1112,9 @@ fn unseen(old: (&[&str], &[&str]), new: (&[&str], &[&str]), pairs: &[(usize, usi
 /// if there is none within `LOOKBACK` lines, or none at all above it.
 fn container(lines: &[&str], line: usize, indent: usize) -> Option<usize> {
     let first = line.saturating_sub(LOOKBACK).max(1);
-    (first..line).rev().find(|&no| !lines[no - 1].trim().is_empty() && width(lines[no - 1]) < indent)
+    (first..line)
+        .rev()
+        .find(|&no| !lines[no - 1].trim().is_empty() && width(lines[no - 1]) < indent)
 }
 
 /// Whether a line can hold the lines indented below it. It parses nothing: it looks for a block
@@ -881,7 +1130,8 @@ fn opens_block(line: &str) -> bool {
         return true;
     }
     // An ordered list item: "1." or "1)".
-    if text.chars().next().is_some_and(|c| c.is_ascii_digit()) && text[1..].starts_with(['.', ')']) {
+    if text.chars().next().is_some_and(|c| c.is_ascii_digit()) && text[1..].starts_with(['.', ')'])
+    {
         return true;
     }
     BLOCK_HEADS.contains(&text.split_whitespace().next().unwrap_or(""))
@@ -913,19 +1163,42 @@ fn orphans(old: &[&str], new: &[&str], o: &[Row], n: &[Row], map: &Map) -> Vec<u
 /// Compares two texts. The work stops being exact at the deadline, and is not begun after it.
 pub fn analyze<'a>(old_text: &'a str, new_text: &'a str, deadline: Instant) -> Analysis<'a> {
     let ((old, old_ends), (new, new_ends)) = (split(old_text), split(new_text));
-    let end_newlines = (newlines_at_end(&old, &old_ends), newlines_at_end(&new, &new_ends));
+    let end_newlines = (
+        newlines_at_end(&old, &old_ends),
+        newlines_at_end(&new, &new_ends),
+    );
     let nothing = (Vec::new(), Vec::new(), Vec::new(), Unseen::default());
     if Instant::now() >= deadline {
         let (replacements, blocks, spacing, unseen) = nothing;
-        return Analysis { old, new, replacements, blocks, spacing, unseen, orphans: Vec::new(), end_newlines, timed_out: true };
+        return Analysis {
+            old,
+            new,
+            replacements,
+            blocks,
+            spacing,
+            unseen,
+            orphans: Vec::new(),
+            end_newlines,
+            timed_out: true,
+        };
     }
     let (o, n) = (rows(&old), rows(&new));
     let canon = Canon::new(&discover(&o, &n));
     let mut ids = HashMap::new();
-    let ok: Vec<u32> = o.iter().map(|r| intern(&mut ids, canon.key(r.core))).collect();
-    let nk: Vec<u32> = n.iter().map(|r| intern(&mut ids, canon.key(r.core))).collect();
+    let ok: Vec<u32> = o
+        .iter()
+        .map(|r| intern(&mut ids, canon.key(r.core)))
+        .collect();
+    let nk: Vec<u32> = n
+        .iter()
+        .map(|r| intern(&mut ids, canon.key(r.core)))
+        .collect();
 
-    let mut map = Map { o2n: vec![None; o.len()], n2o: vec![None; n.len()], stays: vec![true; n.len()] };
+    let mut map = Map {
+        o2n: vec![None; o.len()],
+        n2o: vec![None; n.len()],
+        stays: vec![true; n.len()],
+    };
     let mut tiles = claim_runs(&o, &n, &ok, &nk, &mut map);
     let stay = heaviest_in_order(&tiles, &n);
     grow(&mut tiles, &stay, &o, &n, &ok, &nk, &mut map);
@@ -994,7 +1267,11 @@ fn indent_text(indent: Indent) -> String {
 
 /// The first line of a block, to name it, and how many more lines like it the block holds.
 fn label(text: &[&str], span: Span, peers: usize) -> String {
-    let more = if peers == 0 { String::new() } else { format!(" +{peers} more at this indent") };
+    let more = if peers == 0 {
+        String::new()
+    } else {
+        format!(" +{peers} more at this indent")
+    };
     format!("  ({}){more}", cut(text[span.0 - 1].trim(), 60))
 }
 
@@ -1003,41 +1280,86 @@ fn label(text: &[&str], span: Span, peers: usize) -> String {
 fn headlines(a: &Analysis, b: &Block) -> Vec<String> {
     // A block can hold more blank lines, or fewer, than it did. Both sizes are given then.
     let sizes = |o: Span, n: Span| {
-        let to = if o.1 - o.0 == n.1 - n.0 { String::new() } else { format!(" to {}", n.1 - n.0 + 1) };
+        let to = if o.1 - o.0 == n.1 - n.0 {
+            String::new()
+        } else {
+            format!(" to {}", n.1 - n.0 + 1)
+        };
         format!("{}{to}: {} -> {}", lines(o), range(o), range(n))
     };
     let first = match (b.kind, b.old, b.new) {
-        (Kind::Deleted, Some(o), _) => format!("deleted {}: {}{}", lines(o), range(o), label(&a.old, o, b.heads.len())),
-        (Kind::Inserted, _, Some(n)) => format!("inserted {}: {}{}", lines(n), range(n), label(&a.new, n, 0)),
-        (Kind::Changed, Some(o), Some(n)) => format!("changed {}{}", sizes(o, n), label(&a.new, n, 0)),
+        (Kind::Deleted, Some(o), _) => format!(
+            "deleted {}: {}{}",
+            lines(o),
+            range(o),
+            label(&a.old, o, b.heads.len())
+        ),
+        (Kind::Inserted, _, Some(n)) => {
+            format!("inserted {}: {}{}", lines(n), range(n), label(&a.new, n, 0))
+        }
+        (Kind::Changed, Some(o), Some(n)) => {
+            format!("changed {}{}", sizes(o, n), label(&a.new, n, 0))
+        }
         (_, Some(o), Some(n)) => {
-            let verb = if b.kind == Kind::Moved { "moved" } else { "reindented" };
-            format!("{verb} {}{}{}", sizes(o, n), indent_text(b.indent), label(&a.new, n, b.heads.len()))
+            let verb = if b.kind == Kind::Moved {
+                "moved"
+            } else {
+                "reindented"
+            };
+            format!(
+                "{verb} {}{}{}",
+                sizes(o, n),
+                indent_text(b.indent),
+                label(&a.new, n, b.heads.len())
+            )
         }
         _ => String::new(),
     };
     let passed = b.passed.map(|(down, span)| {
         let way = if down { "down" } else { "up" };
-        format!("  {way} past {}: {}{}", lines(span), range(span), label(&a.new, span, 0))
+        format!(
+            "  {way} past {}: {}{}",
+            lines(span),
+            range(span),
+            label(&a.new, span, 0)
+        )
     });
     let outdented = b.outdented.map(|(n, first)| {
-        let (verb, sign) = (if n == 1 { "line is" } else { "lines are" }, if b.new.is_some() { '+' } else { '-' });
-        format!("  WARNING: {n} {verb} indented less than the block's first line, from {sign}{first}")
+        let (verb, sign) = (
+            if n == 1 { "line is" } else { "lines are" },
+            if b.new.is_some() { '+' } else { '-' },
+        );
+        format!(
+            "  WARNING: {n} {verb} indented less than the block's first line, from {sign}{first}"
+        )
     });
-    [Some(first), passed, outdented].into_iter().flatten().collect()
+    [Some(first), passed, outdented]
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 fn spacing_text(s: &Spacing) -> String {
     let now = match s.now {
         0 if s.above == 0 => "no blank line at the start of the file".to_string(),
         0 => format!("no blank line between {} and {}", s.above, s.above + 1),
-        n => format!("{} at {}", count(n, "blank line"), range((s.above + 1, s.above + n))),
+        n => format!(
+            "{} at {}",
+            count(n, "blank line"),
+            range((s.above + 1, s.above + n))
+        ),
     };
     let was = match s.was[..] {
         [one] => one.to_string(),
-        _ => format!("{} below the line above, {} above the line below", s.was[0], s.was[1]),
+        _ => format!(
+            "{} below the line above, {} above the line below",
+            s.was[0], s.was[1]
+        ),
     };
-    format!("{}{now}, was {was}", if s.warn { "WARNING: " } else { "spacing: " })
+    format!(
+        "{}{now}, was {was}",
+        if s.warn { "WARNING: " } else { "spacing: " }
+    )
 }
 
 /// The runs of blank lines that are warnings, or those that are not: the first `most`, and how
@@ -1045,9 +1367,17 @@ fn spacing_text(s: &Spacing) -> String {
 fn spacing_lines(a: &Analysis, warn: bool, most: usize) -> Vec<String> {
     let all: Vec<_> = a.spacing.iter().filter(|s| s.warn == warn).collect();
     let more = all.len().checked_sub(most + 1).map(|more| {
-        format!("{}{} of blank lines changed", if warn { "WARNING: " } else { "spacing: " }, count(more + 1, "more run"))
+        format!(
+            "{}{} of blank lines changed",
+            if warn { "WARNING: " } else { "spacing: " },
+            count(more + 1, "more run")
+        )
     });
-    all.iter().take(most).map(|s| spacing_text(s)).chain(more).collect()
+    all.iter()
+        .take(most)
+        .map(|s| spacing_text(s))
+        .chain(more)
+        .collect()
 }
 
 /// The warnings about the file as a whole: how it ends, and where blank lines went wrong.
@@ -1057,7 +1387,10 @@ fn file_warnings(a: &Analysis) -> Vec<String> {
         0 | 1 => String::new(),
         n => format!(" ({} at the end)", count(n - 1, "blank line")),
     };
-    let end = format!("WARNING: file ends with {}, was {before}{blank}", count(after, "newline"));
+    let end = format!(
+        "WARNING: file ends with {}, was {before}{blank}",
+        count(after, "newline")
+    );
     Some(end)
         .filter(|_| before != after)
         .into_iter()
@@ -1073,16 +1406,28 @@ fn orphan_lines(a: &Analysis) -> Vec<String> {
     };
     let rest = a.orphans.len().saturating_sub(MAX_NOTES);
     let more = (rest > 0).then(|| format!("WARNING: {} more lines like it", count(rest, "line")));
-    a.orphans.iter().take(MAX_NOTES).map(|&no| one(no)).chain(more).collect()
+    a.orphans
+        .iter()
+        .take(MAX_NOTES)
+        .map(|&no| one(no))
+        .chain(more)
+        .collect()
 }
 
 /// The changes that a diff shows as two lines that look the same.
 fn unseen_lines(unseen: &Unseen) -> Vec<String> {
-    let ending = |(from, to, lines): &(&str, &str, usize)| format!("line endings: {from} -> {to} on {}", count(*lines, "line"));
+    let ending = |(from, to, lines): &(&str, &str, usize)| {
+        format!("line endings: {from} -> {to} on {}", count(*lines, "line"))
+    };
     let endings = unseen.endings.iter().map(ending);
-    let blank = unseen.blank.map(|(lines, first)| format!("whitespace-only lines changed: {lines}, from +{first}"));
+    let blank = unseen
+        .blank
+        .map(|(lines, first)| format!("whitespace-only lines changed: {lines}, from +{first}"));
     let trailing = unseen.trailing.map(|(lines, first)| {
-        format!("trailing whitespace changed on {}, from +{first}", count(lines, "line"))
+        format!(
+            "trailing whitespace changed on {}, from +{first}",
+            count(lines, "line")
+        )
     });
     endings.chain(blank).chain(trailing).collect()
 }
@@ -1092,16 +1437,35 @@ fn replacement_lines(a: &Analysis) -> Vec<String> {
     let line = |r: &Replacement| {
         let left = match r.left {
             0 => "none left".to_string(),
-            n => format!("{} still {} {}", count(n, "line"), if n == 1 { "has" } else { "have" }, r.from),
+            n => format!(
+                "{} still {} {}",
+                count(n, "line"),
+                if n == 1 { "has" } else { "have" },
+                r.from
+            ),
         };
-        format!("replaced on {}: {} -> {} ({left})", count(r.lines, "line"), r.from, r.to)
+        format!(
+            "replaced on {}: {} -> {} ({left})",
+            count(r.lines, "line"),
+            r.from,
+            r.to
+        )
     };
     let rest = a.replacements.get(MAX_REPLACEMENTS..).unwrap_or_default();
     let more = Some(rest).filter(|rest| !rest.is_empty()).map(|rest| {
         let lines = rest.iter().map(|r| r.lines).sum::<usize>();
-        format!("... {} on {}", count(rest.len(), "more replacement"), count(lines, "line"))
+        format!(
+            "... {} on {}",
+            count(rest.len(), "more replacement"),
+            count(lines, "line")
+        )
     });
-    a.replacements.iter().take(MAX_REPLACEMENTS).map(line).chain(more).collect()
+    a.replacements
+        .iter()
+        .take(MAX_REPLACEMENTS)
+        .map(line)
+        .chain(more)
+        .collect()
 }
 
 /// How much of each block to show. The first level that fits in the summary is used.
@@ -1115,11 +1479,31 @@ struct Level {
 }
 
 const LEVELS: [Level; 5] = [
-    Level { edge: 2, context: true, marks: 3 },
-    Level { edge: 2, context: true, marks: 1 },
-    Level { edge: 1, context: true, marks: 1 },
-    Level { edge: 1, context: false, marks: 0 },
-    Level { edge: 0, context: false, marks: 0 },
+    Level {
+        edge: 2,
+        context: true,
+        marks: 3,
+    },
+    Level {
+        edge: 2,
+        context: true,
+        marks: 1,
+    },
+    Level {
+        edge: 1,
+        context: true,
+        marks: 1,
+    },
+    Level {
+        edge: 1,
+        context: false,
+        marks: 0,
+    },
+    Level {
+        edge: 0,
+        context: false,
+        marks: 0,
+    },
 ];
 
 /// The lines of a block to show: its first and last lines, and a few lines that show what
@@ -1129,14 +1513,23 @@ fn shown(text: &[&str], (first, last): Span, level: &Level, heads: &[usize]) -> 
     if last - first < 2 * level.edge + 1 {
         return (first..=last).collect();
     }
-    let mut picks: Vec<usize> = (first..first + level.edge).chain(last + 1 - level.edge..=last).collect();
+    let mut picks: Vec<usize> = (first..first + level.edge)
+        .chain(last + 1 - level.edge..=last)
+        .collect();
     let inner = || (first + 1..=last).filter(|&no| !text[no - 1].trim().is_empty());
     let least = inner().map(|no| width(text[no - 1])).min().unwrap_or(0);
     let marks: Vec<usize> = match least < width(text[first - 1]) {
-        true => inner().filter(|&no| width(text[no - 1]) == least).take(level.marks + 2 * level.edge).collect(),
+        true => inner()
+            .filter(|&no| width(text[no - 1]) == least)
+            .take(level.marks + 2 * level.edge)
+            .collect(),
         false => heads.to_vec(),
     };
-    let marks: Vec<usize> = marks.into_iter().filter(|no| !picks.contains(no)).take(level.marks).collect();
+    let marks: Vec<usize> = marks
+        .into_iter()
+        .filter(|no| !picks.contains(no))
+        .take(level.marks)
+        .collect();
     picks.extend(marks);
     picks.sort();
     picks
@@ -1150,13 +1543,25 @@ fn excerpt(a: &Analysis, b: &Block, level: &Level) -> Vec<String> {
     // A long line that replaced another may differ from it only past the place where the
     // excerpt is cut. Both are then shown from a little before the difference.
     let pairs = match (b.kind, b.old, b.new) {
-        (Kind::Changed, Some(old), Some(new)) if old.1 - old.0 == new.1 - new.0 => Some((old.0, new.0)),
+        (Kind::Changed, Some(old), Some(new)) if old.1 - old.0 == new.1 - new.0 => {
+            Some((old.0, new.0))
+        }
         _ => None,
     };
     let skipped = |k: usize| {
-        let (old, new) = pairs.map_or(("", ""), |(old, new)| (a.old[old + k - 1], a.new[new + k - 1]));
-        let same = old.chars().zip(new.chars()).take_while(|(x, y)| x == y).count();
-        if same + 20 > MAX_WIDTH { same - 20 } else { 0 }
+        let (old, new) = pairs.map_or(("", ""), |(old, new)| {
+            (a.old[old + k - 1], a.new[new + k - 1])
+        });
+        let same = old
+            .chars()
+            .zip(new.chars())
+            .take_while(|(x, y)| x == y)
+            .count();
+        if same + 20 > MAX_WIDTH {
+            same - 20
+        } else {
+            0
+        }
     };
     let mut side = |text: &[&str], sign: char, span: Span| {
         let mut last = span.0;
@@ -1187,7 +1592,10 @@ fn excerpt(a: &Analysis, b: &Block, level: &Level) -> Vec<String> {
         let next = (end + 1..=last).find(|&no| !a.new[no - 1].trim().is_empty());
         out.push(match next {
             Some(no) => line(no),
-            None if end < last => format!("   (end of file, after {})", count(last - end, "blank line")),
+            None if end < last => format!(
+                "   (end of file, after {})",
+                count(last - end, "blank line")
+            ),
             None => "   (end of file)".to_string(),
         });
     }
@@ -1196,32 +1604,61 @@ fn excerpt(a: &Analysis, b: &Block, level: &Level) -> Vec<String> {
 
 /// The summary: at most `OUTPUT_MAX_LINES` lines, each of which ends with a newline.
 pub fn render(a: &Analysis, name: &str, totals: &Totals) -> String {
-    let Totals { added, removed, hunks, rough } = totals;
+    let Totals {
+        added,
+        removed,
+        hunks,
+        rough,
+    } = totals;
     let (hunks, before, after) = (count(*hunks, "hunk"), a.old.len(), a.new.len());
     let first = match *rough {
         false => format!("{name}: +{added} -{removed} lines in {hunks}; {before} -> {after} lines"),
-        true => format!("{name}: about +{added} -{removed} lines, counted roughly; {before} -> {after} lines"),
+        true => format!(
+            "{name}: about +{added} -{removed} lines, counted roughly; {before} -> {after} lines"
+        ),
     };
     let mut top = vec![first, LEGEND.to_string()];
-    top.extend(a.timed_out.then(|| "note: the time ran out. What follows is what was found by then.".to_string()));
+    top.extend(
+        a.timed_out
+            .then(|| "note: the time ran out. What follows is what was found by then.".to_string()),
+    );
     let told = top.len();
     top.extend(file_warnings(a));
     top.extend(unseen_lines(&a.unseen));
     top.extend(spacing_lines(a, false, MAX_NOTES));
     top.extend(replacement_lines(a));
     if top.len() == told && a.blocks.is_empty() && *added + *removed > 0 {
-        top.push("the lines that changed are not described here; --diff full prints them".to_string());
+        top.push(
+            "the lines that changed are not described here; --diff full prints them".to_string(),
+        );
     }
 
     let room = OUTPUT_MAX_LINES.saturating_sub(top.len());
     let build = |level: &Level| -> Vec<Vec<String>> {
-        a.blocks.iter().map(|b| headlines(a, b).into_iter().chain(excerpt(a, b, level)).collect()).collect()
+        a.blocks
+            .iter()
+            .map(|b| {
+                headlines(a, b)
+                    .into_iter()
+                    .chain(excerpt(a, b, level))
+                    .collect()
+            })
+            .collect()
     };
     let fits = |body: &Vec<Vec<String>>| body.iter().map(Vec::len).sum::<usize>() <= room;
     let body = match a.blocks.len() > room {
         // More blocks than lines: there is no room for an excerpt, nor for every block.
-        true => a.blocks.iter().take(room).map(|b| headlines(a, b)).collect(),
-        false => LEVELS.iter().map(build).find(fits).unwrap_or_else(|| build(&LEVELS[LEVELS.len() - 1])),
+        true => a
+            .blocks
+            .iter()
+            .take(room)
+            .map(|b| headlines(a, b))
+            .collect(),
+        false => LEVELS
+            .iter()
+            .map(build)
+            .find(fits)
+            .unwrap_or_else(|| build(&LEVELS[LEVELS.len() - 1])),
     };
 
     let mut out = top;
@@ -1235,7 +1672,10 @@ pub fn render(a: &Analysis, name: &str, totals: &Totals) -> String {
         left -= 1;
     }
     if left > 0 {
-        out.push(format!("... {} not shown; --diff full shows every change", count(left, "block")));
+        out.push(format!(
+            "... {} not shown; --diff full shows every change",
+            count(left, "block")
+        ));
     }
     out.iter().map(|l| format!("{l}\n")).collect()
 }
@@ -1243,9 +1683,18 @@ pub fn render(a: &Analysis, name: &str, totals: &Totals) -> String {
 /// The warnings of the summary on their own, to follow a diff that is printed in full: the
 /// warnings about the file, and each block that has a warning. Empty if there is none.
 pub fn warnings(a: &Analysis) -> String {
-    let flagged = a.blocks.iter().filter(|b| b.outdented.is_some()).take(MAX_WARNINGS);
-    let late = a.timed_out.then(|| "note: the time ran out before spacing and indentation were checked".to_string());
-    let lines = file_warnings(a).into_iter().chain(flagged.flat_map(|b| headlines(a, b))).chain(late);
+    let flagged = a
+        .blocks
+        .iter()
+        .filter(|b| b.outdented.is_some())
+        .take(MAX_WARNINGS);
+    let late = a
+        .timed_out
+        .then(|| "note: the time ran out before spacing and indentation were checked".to_string());
+    let lines = file_warnings(a)
+        .into_iter()
+        .chain(flagged.flat_map(|b| headlines(a, b)))
+        .chain(late);
     lines.map(|l| format!("{l}\n")).collect()
 }
 
@@ -1260,7 +1709,9 @@ mod tests {
 
     /// A block shaped like a class: a first line and an indented body.
     fn class(name: &str, lines: usize) -> String {
-        let body: String = (1..lines).map(|i| format!("    {name}_{i} = {i}\n")).collect();
+        let body: String = (1..lines)
+            .map(|i| format!("    {name}_{i} = {i}\n"))
+            .collect();
         format!("class {name}:\n{body}")
     }
 
@@ -1270,11 +1721,20 @@ mod tests {
 
     /// The analysis borrows the two texts. A test leaks them, to keep what it builds in place.
     fn compare(old: impl Into<String>, new: impl Into<String>) -> Analysis<'static> {
-        analyze(old.into().leak(), new.into().leak(), Instant::now() + Duration::from_secs(60))
+        analyze(
+            old.into().leak(),
+            new.into().leak(),
+            Instant::now() + Duration::from_secs(60),
+        )
     }
 
     fn totals() -> Totals {
-        Totals { added: 0, removed: 0, hunks: 0, rough: false }
+        Totals {
+            added: 0,
+            removed: 0,
+            hunks: 0,
+            rough: false,
+        }
     }
 
     #[test]
@@ -1285,15 +1745,27 @@ mod tests {
         let new = "import os\n        return 0\n\nclass A:\n    def run(self):\n";
         assert_eq!(compare(old, new).orphans, [2]);
         // The same line still under its `def`: nothing to say.
-        assert!(compare(old, "import os\n\nclass A:\n    def run(self):\n        return 0\n").orphans.is_empty());
+        assert!(compare(
+            old,
+            "import os\n\nclass A:\n    def run(self):\n        return 0\n"
+        )
+        .orphans
+        .is_empty());
         // Already standing like that before the edit: not this edit's doing, so it stays quiet.
         let weird = "import os\n        return 0\n";
-        assert!(compare(weird, "import os\n        return 0\nx = 1\n").orphans.is_empty());
+        assert!(compare(weird, "import os\n        return 0\nx = 1\n")
+            .orphans
+            .is_empty());
         // A new line put where nothing can hold it is this edit's doing, and is reported.
-        assert_eq!(compare("import os\n", "import os\n    x = 1\n").orphans, [2]);
+        assert_eq!(
+            compare("import os\n", "import os\n    x = 1\n").orphans,
+            [2]
+        );
         // Lines that hold what is indented under them say nothing.
         let held = "def f():\n    return 1\n\n# Title\n\n    code block\n\nitems = [\n    1,\n]\n";
-        assert!(compare(held, held.replace("return 1", "return 2")).orphans.is_empty());
+        assert!(compare(held, held.replace("return 1", "return 2"))
+            .orphans
+            .is_empty());
     }
 
     #[test]
@@ -1302,22 +1774,52 @@ mod tests {
             let (lines, ends) = split(text);
             newlines_at_end(&lines, &ends)
         };
-        assert_eq!([count(""), count("a"), count("a\n"), count("a\n\n\n"), count("a\r\n\r\n")], [0, 0, 1, 3, 2]);
+        assert_eq!(
+            [
+                count(""),
+                count("a"),
+                count("a\n"),
+                count("a\n\n\n"),
+                count("a\r\n\r\n")
+            ],
+            [0, 0, 1, 3, 2]
+        );
         // A line of spaces at the end is a blank line at the end.
         assert_eq!([count("a\n  \n"), count("a\n  "), count("\n\n")], [2, 1, 2]);
-        assert_eq!(split("a\r\nb\n\nc"), (vec!["a", "b", "", "c"], vec!["\r\n", "\n", "\n", ""]));
+        assert_eq!(
+            split("a\r\nb\n\nc"),
+            (vec!["a", "b", "", "c"], vec!["\r\n", "\n", "\n", ""])
+        );
     }
 
     #[test]
     fn splits_a_line_into_tokens() {
-        assert_eq!(tokens("self.log_event(\"x\",  1)"), ["self", ".", "log_event", "(", "\"", "x", "\"", ",", "  ", "1", ")"]);
+        assert_eq!(
+            tokens("self.log_event(\"x\",  1)"),
+            [
+                "self",
+                ".",
+                "log_event",
+                "(",
+                "\"",
+                "x",
+                "\"",
+                ",",
+                "  ",
+                "1",
+                ")"
+            ]
+        );
     }
 
     #[test]
     fn finds_a_moved_block() {
         let (a, b, c) = (part("alpha", 10), part("beta", 4), part("gamma", 10));
         let found = compare(format!("{a}{b}{c}"), format!("{a}{c}{b}"));
-        assert_eq!(kinds(&found), [(Kind::Moved, Some((11, 14)), Some((21, 24)))]);
+        assert_eq!(
+            kinds(&found),
+            [(Kind::Moved, Some((11, 14)), Some((21, 24)))]
+        );
         assert_eq!(found.blocks[0].after, 20);
         assert!(found.spacing.is_empty() && found.replacements.is_empty());
     }
@@ -1326,8 +1828,14 @@ mod tests {
     fn the_block_that_moved_is_the_one_with_fewest_heads() {
         // One large class went below three small functions. The class moved, not the functions.
         let big = class("Big", 40);
-        let small: String = ["f", "g", "h"].iter().map(|f| format!("def {f}():\n    return {f}\n")).collect();
-        let found = compare(format!("top = 1\n{big}{small}"), format!("top = 1\n{small}{big}"));
+        let small: String = ["f", "g", "h"]
+            .iter()
+            .map(|f| format!("def {f}():\n    return {f}\n"))
+            .collect();
+        let found = compare(
+            format!("top = 1\n{big}{small}"),
+            format!("top = 1\n{small}{big}"),
+        );
         assert_eq!(kinds(&found), [(Kind::Moved, Some((2, 41)), Some((8, 47)))]);
     }
 
@@ -1335,34 +1843,69 @@ mod tests {
     fn a_renamed_line_does_not_split_a_moved_block() {
         let call = |name: &str, i: usize| format!("    self.{name}(\"step\", {i})\n");
         let text = |name: &str, first: &str, second: &str| {
-            let calls: String = (0..6).map(|i| format!("value_{i} = {i}\n{}", call(name, i))).collect();
+            let calls: String = (0..6)
+                .map(|i| format!("value_{i} = {i}\n{}", call(name, i)))
+                .collect();
             format!("{calls}{first}{second}")
         };
-        let block = |name: &str| format!("class Report:\n    total = 0\n{}    done = True\n", call(name, 99));
+        let block = |name: &str| {
+            format!(
+                "class Report:\n    total = 0\n{}    done = True\n",
+                call(name, 99)
+            )
+        };
         let tail = part("tail", 8);
-        let found = compare(text("log_event", &block("log_event"), &tail), text("emit_event", &tail, &block("emit_event")));
-        assert_eq!(kinds(&found), [(Kind::Moved, Some((13, 16)), Some((21, 24)))]);
-        let expected = Replacement { from: "log_event".into(), to: "emit_event".into(), lines: 7, left: 0 };
+        let found = compare(
+            text("log_event", &block("log_event"), &tail),
+            text("emit_event", &tail, &block("emit_event")),
+        );
+        assert_eq!(
+            kinds(&found),
+            [(Kind::Moved, Some((13, 16)), Some((21, 24)))]
+        );
+        let expected = Replacement {
+            from: "log_event".into(),
+            to: "emit_event".into(),
+            lines: 7,
+            left: 0,
+        };
         assert_eq!(found.replacements, [expected]);
     }
 
     #[test]
     fn a_replacement_reports_the_lines_it_missed() {
         let old: String = (0..8).map(|i| format!("x{i} = load({i})\n")).collect();
-        let new: String = (0..8).map(|i| format!("x{i} = {}({i})\n", if i < 6 { "read" } else { "load" })).collect();
+        let new: String = (0..8)
+            .map(|i| format!("x{i} = {}({i})\n", if i < 6 { "read" } else { "load" }))
+            .collect();
         let found = compare(&old, &new);
-        assert_eq!(found.replacements, [Replacement { from: "load".into(), to: "read".into(), lines: 6, left: 2 }]);
+        assert_eq!(
+            found.replacements,
+            [Replacement {
+                from: "load".into(),
+                to: "read".into(),
+                lines: 6,
+                left: 2
+            }]
+        );
         assert!(found.blocks.is_empty());
     }
 
     #[test]
     fn finds_a_reindented_block() {
-        let body: String = (0..9).map(|i| format!("        step_{i}()\n{}", if i % 3 == 2 { "\n" } else { "" })).collect();
+        let body: String = (0..9)
+            .map(|i| format!("        step_{i}()\n{}", if i % 3 == 2 { "\n" } else { "" }))
+            .collect();
         let old = format!("class A:\n    def f(self):\n{body}    def g(self):\n        pass\n");
         let new = old.replacen("        step_0", "        with lock:\n        step_0", 1);
-        let new = (0..9).fold(new, |text, i| text.replace(&format!("    step_{i}()"), &format!("        step_{i}()")));
+        let new = (0..9).fold(new, |text, i| {
+            text.replace(&format!("    step_{i}()"), &format!("        step_{i}()"))
+        });
         let found = compare(&old, &new);
-        let expected = [(Kind::Inserted, None, Some((3, 3))), (Kind::Reindented, Some((3, 13)), Some((4, 14)))];
+        let expected = [
+            (Kind::Inserted, None, Some((3, 3))),
+            (Kind::Reindented, Some((3, 13)), Some((4, 14))),
+        ];
         assert_eq!(kinds(&found), expected);
         assert_eq!(found.blocks[1].indent, Indent::Add("    "));
         assert_eq!(found.blocks[1].outdented, None);
@@ -1374,10 +1917,18 @@ mod tests {
         let old = "class A:\n    def f(self):\n        one()\n        two()\n\n    def g(self):\n        three()\n\n    def h(self):\n        four()\n";
         let new = "class A:\n    def f(self):\n            one()\n            two()\n\n        def g(self):\n            three()\n\n        def h(self):\n            four()\n";
         let found = compare(old, new);
-        assert_eq!(kinds(&found), [(Kind::Reindented, Some((3, 10)), Some((3, 10)))]);
+        assert_eq!(
+            kinds(&found),
+            [(Kind::Reindented, Some((3, 10)), Some((3, 10)))]
+        );
         assert_eq!(found.blocks[0].outdented, Some((2, 6)));
         let text = render(&found, "f.py", &totals());
-        assert!(text.contains("WARNING: 2 lines are indented less than the block's first line, from +6"), "{text}");
+        assert!(
+            text.contains(
+                "WARNING: 2 lines are indented less than the block's first line, from +6"
+            ),
+            "{text}"
+        );
         assert!(text.contains("  +6:        def g(self):"), "{text}");
     }
 
@@ -1385,15 +1936,35 @@ mod tests {
     fn a_rewritten_stretch_is_one_changed_block() {
         // The old and the new function share only a closing brace.
         let (top, end) = (part("top", 5), part("end", 5));
-        let calls = |from: usize, to: usize| (from..to).map(|i| format!("    call({i});\n")).collect::<String>();
-        let sums = |from: usize, to: usize| (from..to).map(|i| format!("    let v{i} = {i} + 1;\n")).collect::<String>();
+        let calls = |from: usize, to: usize| {
+            (from..to)
+                .map(|i| format!("    call({i});\n"))
+                .collect::<String>()
+        };
+        let sums = |from: usize, to: usize| {
+            (from..to)
+                .map(|i| format!("    let v{i} = {i} + 1;\n"))
+                .collect::<String>()
+        };
         let old = format!("{top}{}}}\n{}{end}", calls(0, 4), calls(4, 8));
         let new = format!("{top}{}}}\n{}{end}", sums(0, 3), sums(3, 8));
-        assert_eq!(kinds(&compare(&old, &new)), [(Kind::Changed, Some((6, 14)), Some((6, 14)))]);
+        assert_eq!(
+            kinds(&compare(&old, &new)),
+            [(Kind::Changed, Some((6, 14)), Some((6, 14)))]
+        );
 
         // Two lines changed and the line between them did not: that line is not an island.
-        let found = compare("a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n", "a = 1\nb = 20\nc = 3\nd = 40\ne = 5\n");
-        assert_eq!(kinds(&found), [(Kind::Changed, Some((2, 2)), Some((2, 2))), (Kind::Changed, Some((4, 4)), Some((4, 4)))]);
+        let found = compare(
+            "a = 1\nb = 2\nc = 3\nd = 4\ne = 5\n",
+            "a = 1\nb = 20\nc = 3\nd = 40\ne = 5\n",
+        );
+        assert_eq!(
+            kinds(&found),
+            [
+                (Kind::Changed, Some((2, 2)), Some((2, 2))),
+                (Kind::Changed, Some((4, 4)), Some((4, 4)))
+            ]
+        );
     }
 
     #[test]
@@ -1425,11 +1996,30 @@ mod tests {
         let (a, b, c) = (class("A", 5), class("B", 5), class("C", 5));
         let old = format!("{a}\n\n{b}\n\n{c}");
         let found = compare(&old, format!("{a}\n\n\n\n{c}"));
-        assert_eq!(found.spacing, [Spacing { warn: true, above: 5, now: 4, was: vec![2] }]);
+        assert_eq!(
+            found.spacing,
+            [Spacing {
+                warn: true,
+                above: 5,
+                now: 4,
+                was: vec![2]
+            }]
+        );
         let found = compare(&old, format!("{a}{c}"));
-        assert_eq!(found.spacing, [Spacing { warn: true, above: 5, now: 0, was: vec![2] }]);
+        assert_eq!(
+            found.spacing,
+            [Spacing {
+                warn: true,
+                above: 5,
+                now: 0,
+                was: vec![2]
+            }]
+        );
         let text = render(&found, "f.py", &totals());
-        assert!(text.contains("WARNING: no blank line between 5 and 6, was 2"), "{text}");
+        assert!(
+            text.contains("WARNING: no blank line between 5 and 6, was 2"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -1437,15 +2027,32 @@ mod tests {
         let (a, b, c) = (class("A", 5), class("B", 5), class("C", 9));
         let old = format!("{a}\n\n{b}\n\n{c}");
         let found = compare(&old, format!("{a}\n\n{c}{b}\n\n"));
-        assert_eq!(kinds(&found), [(Kind::Moved, Some((8, 12)), Some((17, 21)))]);
-        assert_eq!(found.spacing, [Spacing { warn: true, above: 16, now: 0, was: vec![2] }]);
+        assert_eq!(
+            kinds(&found),
+            [(Kind::Moved, Some((8, 12)), Some((17, 21)))]
+        );
+        assert_eq!(
+            found.spacing,
+            [Spacing {
+                warn: true,
+                above: 16,
+                now: 0,
+                was: vec![2]
+            }]
+        );
         assert_eq!(found.end_newlines, (1, 3));
         let text = render(&found, "f.py", &totals());
-        assert!(text.contains("WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)"), "{text}");
+        assert!(
+            text.contains("WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)"),
+            "{text}"
+        );
 
         // Moved with the blank lines above it: nothing to warn about.
         let found = compare(&old, format!("{a}\n\n{c}\n\n{b}"));
-        assert_eq!(kinds(&found), [(Kind::Moved, Some((8, 12)), Some((19, 23)))]);
+        assert_eq!(
+            kinds(&found),
+            [(Kind::Moved, Some((8, 12)), Some((19, 23)))]
+        );
         assert!(found.spacing.is_empty());
         assert_eq!(found.end_newlines, (1, 1));
     }
@@ -1453,7 +2060,15 @@ mod tests {
     #[test]
     fn blank_lines_changed_between_the_same_two_lines_are_a_note() {
         let found = compare("a = 1\n\nb = 2\nc = 3\n", "a = 1\n\n\nb = 2\nc = 3\n");
-        assert_eq!(found.spacing, [Spacing { warn: false, above: 1, now: 2, was: vec![1] }]);
+        assert_eq!(
+            found.spacing,
+            [Spacing {
+                warn: false,
+                above: 1,
+                now: 2,
+                was: vec![1]
+            }]
+        );
         assert!(render(&found, "f.py", &totals()).contains("spacing: 2 blank lines at 2-3, was 1"));
     }
 
@@ -1467,26 +2082,57 @@ mod tests {
     #[test]
     fn the_summary_is_bounded() {
         let old = part("line", 900);
-        let new: String = (1..=900).map(|i| if i % 3 == 0 { format!("other {i} {}\n", i * 7) } else { format!("line {i}\n") }).collect();
+        let new: String = (1..=900)
+            .map(|i| {
+                if i % 3 == 0 {
+                    format!("other {i} {}\n", i * 7)
+                } else {
+                    format!("line {i}\n")
+                }
+            })
+            .collect();
         let found = compare(&old, &new);
         assert_eq!(found.blocks.len(), 300);
         let text = render(&found, "f.py", &totals());
         assert_eq!(text.lines().count(), OUTPUT_MAX_LINES, "{text}");
-        assert!(text.ends_with("blocks not shown; --diff full shows every change\n"), "{text}");
+        assert!(
+            text.ends_with("blocks not shown; --diff full shows every change\n"),
+            "{text}"
+        );
     }
 
     #[test]
     fn units_deleted_together_are_told_apart_or_counted() {
-        let units = |names: &[&str]| names.iter().map(|f| format!("def {f}():\n    return {f}\n\n")).collect::<String>();
+        let units = |names: &[&str]| {
+            names
+                .iter()
+                .map(|f| format!("def {f}():\n    return {f}\n\n"))
+                .collect::<String>()
+        };
         let (top, end) = (part("top", 3), part("end", 3));
-        let found = compare(format!("{top}\n{}{end}", units(&["a", "b"])), format!("{top}\n{end}"));
-        assert_eq!(kinds(&found), [(Kind::Deleted, Some((5, 6)), None), (Kind::Deleted, Some((8, 9)), None)]);
+        let found = compare(
+            format!("{top}\n{}{end}", units(&["a", "b"])),
+            format!("{top}\n{end}"),
+        );
+        assert_eq!(
+            kinds(&found),
+            [
+                (Kind::Deleted, Some((5, 6)), None),
+                (Kind::Deleted, Some((8, 9)), None)
+            ]
+        );
         assert!(found.spacing.is_empty());
 
-        let found = compare(format!("{top}\n{}{end}", units(&["a", "b", "c", "d", "e"])), format!("{top}\n{end}"));
+        let found = compare(
+            format!("{top}\n{}{end}", units(&["a", "b", "c", "d", "e"])),
+            format!("{top}\n{end}"),
+        );
         assert_eq!(kinds(&found), [(Kind::Deleted, Some((5, 18)), None)]);
         let text = render(&found, "f.py", &totals());
-        assert!(text.contains("deleted 14 lines: 5-18  (def a():) +4 more at this indent\n"), "{text}");
+        assert!(
+            text.contains("deleted 14 lines: 5-18  (def a():) +4 more at this indent\n"),
+            "{text}"
+        );
         assert!(text.contains("  -8:def b():\n"), "{text}");
     }
 
@@ -1494,16 +2140,30 @@ mod tests {
     fn the_excerpt_says_where_the_file_ends() {
         let found = compare("a = 1\nb = 2\n", "a = 1\nb = 2\nc = 3\n\n\n");
         let text = render(&found, "f.py", &totals());
-        assert!(text.ends_with("   2:b = 2\n  +3:c = 3\n   (end of file, after 2 blank lines)\n"), "{text}");
-        assert!(text.contains("WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)\n"), "{text}");
+        assert!(
+            text.ends_with("   2:b = 2\n  +3:c = 3\n   (end of file, after 2 blank lines)\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains("WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)\n"),
+            "{text}"
+        );
     }
 
     #[test]
     fn a_change_far_into_a_long_line_is_shown() {
         let start = "word ".repeat(40);
-        let found = compare(format!("a = 1\n{start}old end\nb = 2\n"), format!("a = 1\n{start}new end\nb = 2\n"));
+        let found = compare(
+            format!("a = 1\n{start}old end\nb = 2\n"),
+            format!("a = 1\n{start}new end\nb = 2\n"),
+        );
         let text = render(&found, "f.md", &totals());
-        assert!(text.contains("  -2:...word word word word old end\n  +2:...word word word word new end\n"), "{text}");
+        assert!(
+            text.contains(
+                "  -2:...word word word word old end\n  +2:...word word word word new end\n"
+            ),
+            "{text}"
+        );
     }
 
     #[test]
@@ -1519,10 +2179,28 @@ mod tests {
     fn a_replacement_is_found_wherever_the_line_went() {
         // Every line that was renamed also moved, so no diff puts the old line next to the new.
         let (a, b) = (part("alpha", 6), part("beta", 6));
-        let calls = |name: &str| (0..5).map(|i| format!("    {name}(\"step\", {i})\n")).collect::<String>();
-        let found = compare(format!("{a}{}{b}", calls("log_event")), format!("{a}{b}{}", calls("emit_event")));
-        assert_eq!(found.replacements, [Replacement { from: "log_event".into(), to: "emit_event".into(), lines: 5, left: 0 }]);
-        assert_eq!(kinds(&found), [(Kind::Moved, Some((7, 11)), Some((13, 17)))]);
+        let calls = |name: &str| {
+            (0..5)
+                .map(|i| format!("    {name}(\"step\", {i})\n"))
+                .collect::<String>()
+        };
+        let found = compare(
+            format!("{a}{}{b}", calls("log_event")),
+            format!("{a}{b}{}", calls("emit_event")),
+        );
+        assert_eq!(
+            found.replacements,
+            [Replacement {
+                from: "log_event".into(),
+                to: "emit_event".into(),
+                lines: 5,
+                left: 0
+            }]
+        );
+        assert_eq!(
+            kinds(&found),
+            [(Kind::Moved, Some((7, 11)), Some((13, 17)))]
+        );
     }
 
     #[test]
@@ -1530,7 +2208,11 @@ mod tests {
         // Seven renames, on 10, 9, 8, 7, 6, 5 and 4 lines.
         let names = ["aa", "bb", "cc", "dd", "ee", "ff", "gg"];
         let text = |end: &str| {
-            let lines = |(k, name): (usize, &&str)| (0..10 - k).map(|i| format!("x{k}_{i} = {name}_{end}({i})\n")).collect::<String>();
+            let lines = |(k, name): (usize, &&str)| {
+                (0..10 - k)
+                    .map(|i| format!("x{k}_{i} = {name}_{end}({i})\n"))
+                    .collect::<String>()
+            };
             names.iter().enumerate().map(lines).collect::<String>()
         };
         let found = compare(text("old"), text("new"));
@@ -1545,44 +2227,109 @@ mod tests {
     #[test]
     fn a_rename_on_a_large_file_is_found() {
         // 80,000 lines, a rename on every other one, and the first five lines deleted.
-        let line = |name: &str, i: usize| if i % 2 == 0 { format!("v{i} = {name}({i})\n") } else { format!("w{i} = {i}\n") };
+        let line = |name: &str, i: usize| {
+            if i % 2 == 0 {
+                format!("v{i} = {name}({i})\n")
+            } else {
+                format!("w{i} = {i}\n")
+            }
+        };
         let old: String = (0..80_000).map(|i| line("log_event", i)).collect();
         let new: String = (5..80_000).map(|i| line("emit_event", i)).collect();
         let found = compare(old, new);
-        assert_eq!(found.replacements, [Replacement { from: "log_event".into(), to: "emit_event".into(), lines: 39_997, left: 0 }]);
+        assert_eq!(
+            found.replacements,
+            [Replacement {
+                from: "log_event".into(),
+                to: "emit_event".into(),
+                lines: 39_997,
+                left: 0
+            }]
+        );
         assert_eq!(kinds(&found), [(Kind::Deleted, Some((1, 5)), None)]);
     }
 
     #[test]
     fn line_endings_that_changed_are_reported() {
-        let old: String = (0..100).map(|i| format!("line {i}\r\n{}", if i % 10 == 9 { "\r\n" } else { "" })).collect();
+        let old: String = (0..100)
+            .map(|i| format!("line {i}\r\n{}", if i % 10 == 9 { "\r\n" } else { "" }))
+            .collect();
         let found = compare(&old, old.replace("\r\n", "\n"));
-        assert_eq!(found.unseen, Unseen { endings: vec![("CRLF", "LF", 110)], blank: None, trailing: None });
+        assert_eq!(
+            found.unseen,
+            Unseen {
+                endings: vec![("CRLF", "LF", 110)],
+                blank: None,
+                trailing: None
+            }
+        );
         assert!(found.blocks.is_empty() && found.spacing.is_empty());
-        let text = render(&found, "f.txt", &Totals { added: 110, removed: 110, hunks: 1, rough: false });
-        assert!(text.ends_with("in the new file.\nline endings: CRLF -> LF on 110 lines\n"), "{text}");
+        let text = render(
+            &found,
+            "f.txt",
+            &Totals {
+                added: 110,
+                removed: 110,
+                hunks: 1,
+                rough: false,
+            },
+        );
+        assert!(
+            text.ends_with("in the new file.\nline endings: CRLF -> LF on 110 lines\n"),
+            "{text}"
+        );
     }
 
     #[test]
     fn whitespace_that_does_not_show_is_reported() {
         let old: String = (0..100).map(|i| format!("line {i}\n   \n")).collect();
         let found = compare(&old, old.replace("   \n", "\n"));
-        assert_eq!(found.unseen, Unseen { endings: vec![], blank: Some((100, 2)), trailing: None });
-        assert!(render(&found, "f.txt", &totals()).contains("whitespace-only lines changed: 100, from +2\n"));
+        assert_eq!(
+            found.unseen,
+            Unseen {
+                endings: vec![],
+                blank: Some((100, 2)),
+                trailing: None
+            }
+        );
+        assert!(render(&found, "f.txt", &totals())
+            .contains("whitespace-only lines changed: 100, from +2\n"));
 
         let old: String = (0..8).map(|i| format!("    v{i} = {i}  \n")).collect();
         let found = compare(&old, old.replace("  \n", "\n"));
-        assert_eq!(found.unseen, Unseen { endings: vec![], blank: None, trailing: Some((8, 1)) });
+        assert_eq!(
+            found.unseen,
+            Unseen {
+                endings: vec![],
+                blank: None,
+                trailing: Some((8, 1))
+            }
+        );
         assert!(found.blocks.is_empty());
-        assert!(render(&found, "f.txt", &totals()).contains("trailing whitespace changed on 8 lines, from +1\n"));
+        assert!(render(&found, "f.txt", &totals())
+            .contains("trailing whitespace changed on 8 lines, from +1\n"));
     }
 
     #[test]
     fn the_header_is_never_all_there_is() {
         // Nothing the analysis knows of, and lines that changed all the same.
         let found = compare("a = 1\n", "a = 1\n");
-        let text = render(&found, "f.py", &Totals { added: 1, removed: 1, hunks: 1, rough: false });
-        assert!(text.ends_with("the lines that changed are not described here; --diff full prints them\n"), "{text}");
+        let text = render(
+            &found,
+            "f.py",
+            &Totals {
+                added: 1,
+                removed: 1,
+                hunks: 1,
+                rough: false,
+            },
+        );
+        assert!(
+            text.ends_with(
+                "the lines that changed are not described here; --diff full prints them\n"
+            ),
+            "{text}"
+        );
     }
 
     #[test]
@@ -1590,15 +2337,26 @@ mod tests {
         // A method added at the end of a class: one blank line above it, as between methods,
         // and the two blank lines that ended the class below it.
         let old = "class A:\n    def m1(self):\n        return 1\n\n    def m2(self):\n        return 2\n\n\ndef top():\n    return 0\n";
-        let new = old.replace("\n\n\ndef top", "\n\n    def m3(self):\n        return 3\n\n\ndef top");
+        let new = old.replace(
+            "\n\n\ndef top",
+            "\n\n    def m3(self):\n        return 3\n\n\ndef top",
+        );
         let found = compare(old, &new);
         assert_eq!(kinds(&found), [(Kind::Inserted, None, Some((8, 9)))]);
         assert!(found.spacing.is_empty(), "{:?}", found.spacing);
 
         // Neither run is as it was: a note, and still no warning.
-        let new = old.replace("\n\n\ndef top", "\n\n    def m3(self):\n        return 3\n\ndef top");
+        let new = old.replace(
+            "\n\n\ndef top",
+            "\n\n    def m3(self):\n        return 3\n\ndef top",
+        );
         let found = compare(old, &new);
-        let note = |above: usize| Spacing { warn: false, above, now: 1, was: vec![2] };
+        let note = |above: usize| Spacing {
+            warn: false,
+            above,
+            now: 1,
+            was: vec![2],
+        };
         assert_eq!(found.spacing, [note(6), note(9)]);
         assert!(warnings(&found).is_empty());
     }
@@ -1608,20 +2366,39 @@ mod tests {
         let old = "import os\n\n\ndef a():\n    return 1\n\n\ndef b():\n    return 2\n\n\ndef c():\n    return 3\n";
         let new = "import os\n\n\nclass K:\n    def a(self):\n        return 1\n\n    def b():\n        return 2\n\n    def c():\n        return 3\n";
         let found = compare(old, new);
-        assert_eq!(kinds(&found), [(Kind::Changed, Some((4, 4)), Some((4, 5))), (Kind::Reindented, Some((5, 13)), Some((6, 12)))]);
+        assert_eq!(
+            kinds(&found),
+            [
+                (Kind::Changed, Some((4, 4)), Some((4, 5))),
+                (Kind::Reindented, Some((5, 13)), Some((6, 12)))
+            ]
+        );
         assert_eq!(found.blocks[1].outdented, None);
         let text = render(&found, "f.py", &totals());
-        assert!(text.contains("reindented 9 lines to 7: 5-13 -> 6-12, indent +4 spaces  (return 1)\n"), "{text}");
+        assert!(
+            text.contains("reindented 9 lines to 7: 5-13 -> 6-12, indent +4 spaces  (return 1)\n"),
+            "{text}"
+        );
         assert!(!text.contains("WARNING"), "{text}");
     }
 
     #[test]
     fn warns_about_the_last_block_moved_to_the_top_with_no_blank_line_below_it() {
-        let old = "def a():\n    return 1\n\n\ndef b():\n    return 2\n\n\ndef c():\n    return 3\n";
-        let new = "def c():\n    return 3\ndef a():\n    return 1\n\n\ndef b():\n    return 2\n\n\n";
+        let old =
+            "def a():\n    return 1\n\n\ndef b():\n    return 2\n\n\ndef c():\n    return 3\n";
+        let new =
+            "def c():\n    return 3\ndef a():\n    return 1\n\n\ndef b():\n    return 2\n\n\n";
         let found = compare(old, new);
         assert_eq!(kinds(&found), [(Kind::Moved, Some((9, 10)), Some((1, 2)))]);
-        assert_eq!(found.spacing, [Spacing { warn: true, above: 2, now: 0, was: vec![2] }]);
+        assert_eq!(
+            found.spacing,
+            [Spacing {
+                warn: true,
+                above: 2,
+                now: 0,
+                was: vec![2]
+            }]
+        );
         let expected = "WARNING: file ends with 3 newlines, was 1 (2 blank lines at the end)\nWARNING: no blank line between 2 and 3, was 2\n";
         assert_eq!(warnings(&found), expected);
     }
@@ -1631,9 +2408,20 @@ mod tests {
         // It had a blank line above it and has none now. The line it follows was the last one
         // of the file, so nothing is known about the space below that, and a line on its own
         // is not a unit that has to keep its distance.
-        let found = compare("a = 1\n\nb = 2\nc = 3\nd = 4\n", "a = 1\n\nc = 3\nd = 4\nb = 2\n");
+        let found = compare(
+            "a = 1\n\nb = 2\nc = 3\nd = 4\n",
+            "a = 1\n\nc = 3\nd = 4\nb = 2\n",
+        );
         assert_eq!(kinds(&found), [(Kind::Moved, Some((3, 3)), Some((5, 5)))]);
-        assert_eq!(found.spacing, [Spacing { warn: false, above: 4, now: 0, was: vec![1] }]);
+        assert_eq!(
+            found.spacing,
+            [Spacing {
+                warn: false,
+                above: 4,
+                now: 0,
+                was: vec![1]
+            }]
+        );
         assert!(warnings(&found).is_empty());
     }
 
@@ -1643,27 +2431,53 @@ mod tests {
     fn many_blocks_take_time_in_proportion() {
         // Every line is a block: all lines in reverse order, or every other line changed.
         let lines = |count: usize| (0..count).map(|i| format!("line {i}\n"));
-        let reversed = |count: usize| (lines(count).collect::<String>(), lines(count).rev().collect::<String>());
+        let reversed = |count: usize| {
+            (
+                lines(count).collect::<String>(),
+                lines(count).rev().collect::<String>(),
+            )
+        };
         let changed = |count: usize| {
-            let other = |(i, line): (usize, String)| if i % 2 == 0 { line.replace('\n', " + more\n") } else { line };
-            (lines(count).collect::<String>(), lines(count).enumerate().map(other).collect::<String>())
+            let other = |(i, line): (usize, String)| {
+                if i % 2 == 0 {
+                    line.replace('\n', " + more\n")
+                } else {
+                    line
+                }
+            };
+            (
+                lines(count).collect::<String>(),
+                lines(count).enumerate().map(other).collect::<String>(),
+            )
         };
         let time = |(old, new): (String, String), blocks: usize| {
             let started = Instant::now();
             let found = compare(old, new);
             let text = render(&found, "f.txt", &totals());
             assert_eq!(found.blocks.len(), blocks);
-            assert!(text.lines().count() <= OUTPUT_MAX_LINES && text.contains(" blocks not shown; "), "{text}");
+            assert!(
+                text.lines().count() <= OUTPUT_MAX_LINES && text.contains(" blocks not shown; "),
+                "{text}"
+            );
             started.elapsed()
         };
         let times = [
-            (time(reversed(30_000), 29_999), time(reversed(120_000), 119_999)),
-            (time(changed(30_000), 15_000), time(changed(120_000), 60_000)),
+            (
+                time(reversed(30_000), 29_999),
+                time(reversed(120_000), 119_999),
+            ),
+            (
+                time(changed(30_000), 15_000),
+                time(changed(120_000), 60_000),
+            ),
         ];
         // Four times the lines take four times as long, and sixteen times as long if each
         // block is compared with every other. On a slow machine only the ratio tells.
         for (small, large) in times {
-            assert!(large < Duration::from_secs(3) || large < small * 10, "{small:?} for 30,000 lines, {large:?} for 120,000");
+            assert!(
+                large < Duration::from_secs(3) || large < small * 10,
+                "{small:?} for 30,000 lines, {large:?} for 120,000"
+            );
         }
     }
 
@@ -1673,7 +2487,16 @@ mod tests {
         let (old, new) = (format!("{a}{b}{c}"), format!("{a}{c}{b}\n\n"));
         let found = analyze(&old, &new, Instant::now());
         assert!(found.timed_out && found.blocks.is_empty());
-        let text = render(&found, "f.py", &Totals { added: 6, removed: 4, hunks: 2, rough: true });
+        let text = render(
+            &found,
+            "f.py",
+            &Totals {
+                added: 6,
+                removed: 4,
+                hunks: 2,
+                rough: true,
+            },
+        );
         let expected = "f.py: about +6 -4 lines, counted roughly; 24 -> 26 lines\n\
             summary (--diff full prints the diff). -N: old line. +N: new line. N: line next to the block, in the new file.\n\
             note: the time ran out. What follows is what was found by then.\n\

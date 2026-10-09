@@ -13,7 +13,10 @@ fn have_nvim() -> bool {
     let nvim = std::env::var_os("NEOVAIN_NVIM").unwrap_or_else(|| "nvim".into());
     let ok = Command::new(nvim).arg("--version").output().is_ok();
     if !ok {
-        assert!(std::env::var_os("NEOVAIN_REQUIRE_NVIM").is_none(), "nvim required but not found");
+        assert!(
+            std::env::var_os("NEOVAIN_REQUIRE_NVIM").is_none(),
+            "nvim required but not found"
+        );
         eprintln!("skipping: nvim not found");
     }
     ok
@@ -32,7 +35,8 @@ struct Case {
 impl Case {
     fn new() -> Self {
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("neovain-safe-test-{}-{n}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("neovain-safe-test-{}-{n}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let root = dir.join("ws");
         fs::create_dir_all(&root).unwrap();
@@ -40,7 +44,12 @@ impl Case {
         fs::write(&path, SAMPLE).unwrap();
         let outside = dir.join("outside.py");
         fs::write(&outside, SAMPLE).unwrap();
-        Self { dir, root, path, outside }
+        Self {
+            dir,
+            root,
+            path,
+            outside,
+        }
     }
     fn text(&self) -> String {
         fs::read_to_string(&self.path).unwrap()
@@ -55,7 +64,10 @@ impl Drop for Case {
 
 fn neovain() -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_neovain"));
-    cmd.env_remove("NEOVAIN_SAFE").env_remove("NEOVAIN_WORKSPACE").env_remove("NEOVAIN_EX_ONLY").env_remove("MSYSTEM");
+    cmd.env_remove("NEOVAIN_SAFE")
+        .env_remove("NEOVAIN_WORKSPACE")
+        .env_remove("NEOVAIN_EX_ONLY")
+        .env_remove("MSYSTEM");
     cmd
 }
 
@@ -73,12 +85,19 @@ fn a_valid_edit_inside_the_workspace_succeeds() {
         .args(["--safe", "--workspace"])
         .arg(&c.root)
         .arg(&c.path)
-        .args(["@^def save", ":g/^def load/d", ":%s/write(data)/write(payload)/"])
+        .args([
+            "@^def save",
+            ":g/^def load/d",
+            ":%s/write(data)/write(payload)/",
+        ])
         .output()
         .unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     let text = c.text();
-    assert!(text.contains("def save(path, data)") && !text.contains("def load(path)"), "{text}");
+    assert!(
+        text.contains("def save(path, data)") && !text.contains("def load(path)"),
+        "{text}"
+    );
     assert!(text.contains("write(payload)"), "{text}");
 }
 
@@ -99,11 +118,20 @@ fn execution_keys_and_files_are_refused_before_neovim() {
         "ciwnew<Esc>".to_string(),
         "ZZ".to_string(),
     ] {
-        let o = neovain().args(["--safe", "--workspace"]).arg(&c.root).arg(&c.path).arg(&step).output().unwrap();
+        let o = neovain()
+            .args(["--safe", "--workspace"])
+            .arg(&c.root)
+            .arg(&c.path)
+            .arg(&step)
+            .output()
+            .unwrap();
         assert_eq!(o.status.code(), Some(2), "{step}: {}", stderr(&o));
         // Rejected either by the profile or by the write/quit rule, both before Neovim.
         let err = stderr(&o);
-        assert!(err.contains("safe profile") || err.contains("write the file or quit"), "{step}: {err}");
+        assert!(
+            err.contains("safe profile") || err.contains("write the file or quit"),
+            "{step}: {err}"
+        );
         assert!(!marker.exists(), "{step} reached neovim anyway");
         assert_eq!(c.text(), SAMPLE, "{step}");
     }
@@ -125,15 +153,31 @@ fn the_expression_register_is_refused_in_every_form() {
         ":g/^def/put! =system('id')",
         ":v/^def/put =1",
     ] {
-        let o = neovain().args(["--safe", "--workspace"]).arg(&c.root).arg(&c.path).arg(step).output().unwrap();
+        let o = neovain()
+            .args(["--safe", "--workspace"])
+            .arg(&c.root)
+            .arg(&c.path)
+            .arg(step)
+            .output()
+            .unwrap();
         assert_eq!(o.status.code(), Some(2), "{step}: {}", stderr(&o));
-        assert!(stderr(&o).contains("expression register"), "{step}: {}", stderr(&o));
+        assert!(
+            stderr(&o).contains("expression register"),
+            "{step}: {}",
+            stderr(&o)
+        );
         assert_eq!(c.text(), SAMPLE, "{step}");
     }
     // A normal register with the bang is legitimate: it reaches Neovim, which reports the
     // empty register instead of the profile refusing the step.
     if have_nvim() {
-        let o = neovain().args(["--safe", "--workspace"]).arg(&c.root).arg(&c.path).arg(":put! a").output().unwrap();
+        let o = neovain()
+            .args(["--safe", "--workspace"])
+            .arg(&c.root)
+            .arg(&c.path)
+            .arg(":put! a")
+            .output()
+            .unwrap();
         assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
         assert!(stderr(&o).contains("E353"), "{}", stderr(&o));
         assert_eq!(c.text(), SAMPLE);
@@ -143,10 +187,20 @@ fn the_expression_register_is_refused_in_every_form() {
 #[test]
 fn the_profile_needs_a_workspace_root() {
     let c = Case::new();
-    let o = neovain().arg("--safe").arg(&c.path).arg(":%s/a/b/").output().unwrap();
+    let o = neovain()
+        .arg("--safe")
+        .arg(&c.path)
+        .arg(":%s/a/b/")
+        .output()
+        .unwrap();
     assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
     assert!(stderr(&o).contains("workspace"), "{}", stderr(&o));
-    let o = neovain().env("NEOVAIN_SAFE", "1").arg(&c.path).arg(":%s/a/b/").output().unwrap();
+    let o = neovain()
+        .env("NEOVAIN_SAFE", "1")
+        .arg(&c.path)
+        .arg(":%s/a/b/")
+        .output()
+        .unwrap();
     assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
     assert!(stderr(&o).contains("workspace"), "{}", stderr(&o));
     assert_eq!(c.text(), SAMPLE);
@@ -165,10 +219,23 @@ fn targets_outside_the_workspace_are_refused() {
             args.push(file.to_str().unwrap());
             args.push(":%s/a/b/");
             let o = neovain().args(&args).output().unwrap();
-            assert_eq!(o.status.code(), Some(2), "{file:?} {extra:?}: {}", stderr(&o));
-            assert!(stderr(&o).contains("outside the workspace"), "{file:?}: {}", stderr(&o));
+            assert_eq!(
+                o.status.code(),
+                Some(2),
+                "{file:?} {extra:?}: {}",
+                stderr(&o)
+            );
+            assert!(
+                stderr(&o).contains("outside the workspace"),
+                "{file:?}: {}",
+                stderr(&o)
+            );
         }
-        assert_eq!(fs::read_to_string(file).unwrap(), SAMPLE, "{file:?} was touched");
+        assert_eq!(
+            fs::read_to_string(file).unwrap(),
+            SAMPLE,
+            "{file:?} was touched"
+        );
     }
 }
 
@@ -178,9 +245,19 @@ fn a_symlink_that_leaves_the_workspace_is_refused() {
     let c = Case::new();
     let link = c.root.join("link.py");
     std::os::unix::fs::symlink(&c.outside, &link).unwrap();
-    let o = neovain().args(["--safe", "--workspace"]).arg(&c.root).arg(&link).arg(":%s/a/b/").output().unwrap();
+    let o = neovain()
+        .args(["--safe", "--workspace"])
+        .arg(&c.root)
+        .arg(&link)
+        .arg(":%s/a/b/")
+        .output()
+        .unwrap();
     assert_eq!(o.status.code(), Some(2), "{}", stderr(&o));
-    assert!(stderr(&o).contains("outside the workspace"), "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("outside the workspace"),
+        "{}",
+        stderr(&o)
+    );
     assert_eq!(fs::read_to_string(&c.outside).unwrap(), SAMPLE);
 }
 
@@ -238,12 +315,22 @@ fn without_the_flags_nothing_changed() {
     }
     let c = Case::new();
     // The default mode still edits with normal-mode keys, with no workspace in sight...
-    let o = neovain().arg(&c.path).args(["@^def load", "wciwread_file<Esc>"]).output().unwrap();
+    let o = neovain()
+        .arg(&c.path)
+        .args(["@^def load", "wciwread_file<Esc>"])
+        .output()
+        .unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(c.text().contains("def read_file(path):"), "{}", c.text());
     // ...and --workspace alone confines without turning the allow-list on.
     fs::write(&c.path, SAMPLE).unwrap();
-    let o = neovain().arg("--workspace").arg(&c.root).arg(&c.path).args(["@^def load", "dd"]).output().unwrap();
+    let o = neovain()
+        .arg("--workspace")
+        .arg(&c.root)
+        .arg(&c.path)
+        .args(["@^def load", "dd"])
+        .output()
+        .unwrap();
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(!c.text().contains("def load(path)"), "{}", c.text());
 }

@@ -11,8 +11,9 @@ pub(crate) fn ex_word(cmd: &str) -> &str {
 /// step has succeeded, and needs Neovim alive until its report has been written: either of these
 /// in a step would take the transactional guarantee out of neovain's hands.
 pub(crate) const WRITE_OR_QUIT: &[&str] = &[
-    "w", "write", "wa", "wal", "wall", "wq", "wqall", "wqa", "x", "xa", "xall", "xit", "exit", "q", "quit", "qa",
-    "qall", "quall", "quitall", "clo", "close", "cq", "cquit", "sus", "suspend", "st", "stop",
+    "w", "write", "wa", "wal", "wall", "wq", "wqall", "wqa", "x", "xa", "xall", "xit", "exit", "q",
+    "quit", "qa", "qall", "quall", "quitall", "clo", "close", "cq", "cquit", "sus", "suspend",
+    "st", "stop",
 ];
 
 /// Whether a step would write the file or quit Neovim. Such a step is always a mistake: the
@@ -70,7 +71,9 @@ pub(crate) fn keys_write_or_quit(step: &str) -> bool {
         match mode {
             _ if escape => mode = Mode::Normal,
             Mode::Normal => match key {
-                "i" | "I" | "a" | "A" | "o" | "O" | "c" | "C" | "s" | "S" | "R" => mode = Mode::Insert,
+                "i" | "I" | "a" | "A" | "o" | "O" | "c" | "C" | "s" | "S" | "R" => {
+                    mode = Mode::Insert
+                }
                 ":" | "Q" => {
                     typed.clear();
                     mode = Mode::Cmd;
@@ -110,8 +113,8 @@ pub(crate) fn keys_write_or_quit(step: &str) -> bool {
 /// Ex commands that leave the buffer or run code outside it. In ex-only mode these are
 /// rejected too: they are the obvious way out of the buffer the mode is meant to keep.
 pub(crate) const EX_ONLY_NO_CODE: &[&str] = &[
-    "lua", "luado", "luafile", "py", "pyfile", "python", "perl", "perlfile", "ruby", "rubyfile", "source", "so",
-    "runtime", "ru", "earlier", "later", "term", "terminal",
+    "lua", "luado", "luafile", "py", "pyfile", "python", "perl", "perlfile", "ruby", "rubyfile",
+    "source", "so", "runtime", "ru", "earlier", "later", "term", "terminal",
 ];
 
 /// In ex-only mode, reject steps that type normal-mode keys, directly or via :normal / :exe.
@@ -135,9 +138,10 @@ pub(crate) fn ex_only_violation(step: &str) -> Option<&'static str> {
     if body.starts_with('!') {
         return Some(":! runs a shell command; ex-only steps stay in the buffer (NEOVAIN_EX_ONLY)");
     }
-    EX_ONLY_NO_CODE.contains(&word).then_some("commands that run code outside the buffer are disabled (NEOVAIN_EX_ONLY)")
+    EX_ONLY_NO_CODE
+        .contains(&word)
+        .then_some("commands that run code outside the buffer are disabled (NEOVAIN_EX_ONLY)")
 }
-
 
 // ---- the agent-safe profile ----
 
@@ -146,13 +150,47 @@ pub(crate) fn ex_only_violation(step: &str) -> Option<&'static str> {
 /// parser does not recognize is rejected instead of passed through. Every entry was checked
 /// against a real nvim (`:help`-documented name or probed short form).
 pub(crate) const SAFE_COMMANDS: &[&str] = &[
-    "a", "append", "c", "change", "co", "copy", "d", "delete", "g", "global", "i", "insert", "j", "join", "m",
-    "move", "pu", "put", "retab", "s", "sort", "substitute", "t", "u", "undo", "v", "vglobal", "y", "yank",
+    "a",
+    "append",
+    "c",
+    "change",
+    "co",
+    "copy",
+    "d",
+    "delete",
+    "g",
+    "global",
+    "i",
+    "insert",
+    "j",
+    "join",
+    "m",
+    "move",
+    "pu",
+    "put",
+    "retab",
+    "s",
+    "sort",
+    "substitute",
+    "t",
+    "u",
+    "undo",
+    "v",
+    "vglobal",
+    "y",
+    "yank",
 ];
 
 /// Command modifiers the safe profile honors: they change messages, marks, the alternate file
 /// and autocmds, never what the command does.
-const SAFE_MODIFIERS: &[&str] = &["silent", "keepalt", "keepjumps", "keeppatterns", "lockmarks", "noautocmd"];
+const SAFE_MODIFIERS: &[&str] = &[
+    "silent",
+    "keepalt",
+    "keepjumps",
+    "keeppatterns",
+    "lockmarks",
+    "noautocmd",
+];
 
 /// The text between two unescaped `delim` and what follows the closing one, or None when the
 /// delimiter never closes.
@@ -201,7 +239,9 @@ fn one_address(s: &str) -> &str {
     }
     match b[0] {
         b'%' | b'.' | b'$' => &s[1..],
-        b'0'..=b'9' | b'+' | b'-' => &s[1 + b[1..].iter().take_while(|c| c.is_ascii_digit()).count()..],
+        b'0'..=b'9' | b'+' | b'-' => {
+            &s[1 + b[1..].iter().take_while(|c| c.is_ascii_digit()).count()..]
+        }
         b'\'' | b'`' if b.len() >= 2 && b[1].is_ascii_alphanumeric() => &s[2..],
         b'/' | b'?' => {
             let delim = b[0];
@@ -306,7 +346,8 @@ fn put_tail(tail: &str) -> Option<&'static str> {
 
 /// Chaining is off everywhere: `|` would run a second command this profile never checked.
 fn plain_tail(tail: &str) -> Option<&'static str> {
-    tail.contains('|').then_some("`|` chains a second command (disabled in the safe profile)")
+    tail.contains('|')
+        .then_some("`|` chains a second command (disabled in the safe profile)")
 }
 
 /// `:s/{pattern}/{replacement}/{flags}`, with no expression replacement.
@@ -361,24 +402,57 @@ pub(crate) fn safe_violation(step: &str) -> Option<&'static str> {
         return None;
     }
     match step.strip_prefix(':') {
-        None => Some("normal-mode keys are disabled in the safe profile; use @anchor and :ex steps"),
+        None => {
+            Some("normal-mode keys are disabled in the safe profile; use @anchor and :ex steps")
+        }
         Some(cmd) => safe_ex(cmd),
     }
 }
 
 #[cfg(test)]
 mod tests {
-use super::*;
+    use super::*;
 
     #[test]
     fn ex_only_rules() {
-        for ok in ["@^def", ":%s/a/b/g", ":g/# DEBUG$/d", ":10,20m$", ":call append(3, ['x'])", ":n", ":nohl"] {
+        for ok in [
+            "@^def",
+            ":%s/a/b/g",
+            ":g/# DEBUG$/d",
+            ":10,20m$",
+            ":call append(3, ['x'])",
+            ":n",
+            ":nohl",
+        ] {
             assert!(ex_only_violation(ok).is_none(), "{ok}");
         }
-        for bad in ["dd", "ciwx<Esc>", ":norm dd", ":normal! dd", ":%norm A;", ":'<,'>normal x", ":exe \"norm dd\"",
-            ":g/x/norm dd", ":v/x/normal dd", ":!touch X", ":!!", ":lua print(1)", ":luado print(1)", ":luafile f.lua",
-            ":py pass", ":py3 pass", ":pyfile f.py", ":perl 1", ":ruby 1", ":source f.vim", ":so f.vim", ":runtime f.vim",
-            ":earlier", ":later", ":terminal"] {
+        for bad in [
+            "dd",
+            "ciwx<Esc>",
+            ":norm dd",
+            ":normal! dd",
+            ":%norm A;",
+            ":'<,'>normal x",
+            ":exe \"norm dd\"",
+            ":g/x/norm dd",
+            ":v/x/normal dd",
+            ":!touch X",
+            ":!!",
+            ":lua print(1)",
+            ":luado print(1)",
+            ":luafile f.lua",
+            ":py pass",
+            ":py3 pass",
+            ":pyfile f.py",
+            ":perl 1",
+            ":ruby 1",
+            ":source f.vim",
+            ":so f.vim",
+            ":runtime f.vim",
+            ":earlier",
+            ":later",
+            ":terminal",
+        ] {
             assert!(ex_only_violation(bad).is_some(), "{bad}");
         }
         // A style restriction, not a sandbox: ex commands can still run vimscript.
@@ -388,12 +462,30 @@ use super::*;
     }
     #[test]
     fn steps_that_write_or_quit_are_rejected() {
-        for ok in ["@^def", ":%s/a/b/g", ":10,20m$", ":g/# DEBUG$/d", ":d", ":sort", ":set ff=unix", ":nohl",
-            ":call append(3, ['x'])", "dd", "ciwnewname<Esc>", "iZZ<Esc>", "/zzz<CR>", "f:dw", "mZ", ">"] {
+        for ok in [
+            "@^def",
+            ":%s/a/b/g",
+            ":10,20m$",
+            ":g/# DEBUG$/d",
+            ":d",
+            ":sort",
+            ":set ff=unix",
+            ":nohl",
+            ":call append(3, ['x'])",
+            "dd",
+            "ciwnewname<Esc>",
+            "iZZ<Esc>",
+            "/zzz<CR>",
+            "f:dw",
+            "mZ",
+            ">",
+        ] {
             assert!(write_or_quit_violation(ok).is_none(), "{ok}");
         }
-        for bad in [":w", ":w!", ":write", ":1,5w", ":%w", ":wq", ":x", ":xit", ":q", ":q!", ":qa", ":wall",
-            ":quitall", ":cq", "ZZ", "ZQ", "ddZZ", "GZZ", ":w<CR>", "Qw<CR>"] {
+        for bad in [
+            ":w", ":w!", ":write", ":1,5w", ":%w", ":wq", ":x", ":xit", ":q", ":q!", ":qa",
+            ":wall", ":quitall", ":cq", "ZZ", "ZQ", "ddZZ", "GZZ", ":w<CR>", "Qw<CR>",
+        ] {
             assert!(write_or_quit_violation(bad).is_some(), "{bad}");
         }
     }
@@ -410,10 +502,41 @@ use super::*;
 
     #[test]
     fn the_safe_profile_allows_buffer_edits() {
-        for ok in ["@^def", "@2@open(", ":%s/a/b/g", ":1s/a/b/", ":.,$d", ":2m$", ":10,20t$", ":2co$",
-            ":g/^#/d", ":v/^import/d", ":g/^x/s/a/b/", ":g/a\\/b/d", ":put a", ":put! a", ":2y", ":sort u", ":1retab",
-            ":silent s/a/b/", ":silent! 1d", ":keepjumps 1,2d", ":/$t/d", ":?a?d", ":'a,'bd", ":1,2join",
-            ":u", ":undo", ":c", ":append", ":sort!", ":change", ":g/^t/d", ":s", ":1,+2m$"] {
+        for ok in [
+            "@^def",
+            "@2@open(",
+            ":%s/a/b/g",
+            ":1s/a/b/",
+            ":.,$d",
+            ":2m$",
+            ":10,20t$",
+            ":2co$",
+            ":g/^#/d",
+            ":v/^import/d",
+            ":g/^x/s/a/b/",
+            ":g/a\\/b/d",
+            ":put a",
+            ":put! a",
+            ":2y",
+            ":sort u",
+            ":1retab",
+            ":silent s/a/b/",
+            ":silent! 1d",
+            ":keepjumps 1,2d",
+            ":/$t/d",
+            ":?a?d",
+            ":'a,'bd",
+            ":1,2join",
+            ":u",
+            ":undo",
+            ":c",
+            ":append",
+            ":sort!",
+            ":change",
+            ":g/^t/d",
+            ":s",
+            ":1,+2m$",
+        ] {
             assert!(safe_violation(ok).is_none(), "{ok}");
         }
     }
@@ -422,23 +545,85 @@ use super::*;
     fn the_safe_profile_rejects_code_shell_files_and_chaining() {
         for bad in [
             // keys, and the ex commands that run code or leave the buffer
-            "dd", "ciwx<Esc>", "ZZ", ":call system('id')", ":echo system('id')", ":let @a=1", ":if 1",
-            ":execute '!ls'", ":execute 'norm dd'", ":normal ZZ", ":norm dd", ":lua os.exit(0)",
-            ":luafile f.lua", ":py pass", ":py3 pass", ":perl 1", ":ruby 1", ":source f.vim", ":so f.vim",
-            ":runtime f.vim", ":terminal", ":!", ":!touch X", ":term", ":finish", ":function! F()",
+            "dd",
+            "ciwx<Esc>",
+            "ZZ",
+            ":call system('id')",
+            ":echo system('id')",
+            ":let @a=1",
+            ":if 1",
+            ":execute '!ls'",
+            ":execute 'norm dd'",
+            ":normal ZZ",
+            ":norm dd",
+            ":lua os.exit(0)",
+            ":luafile f.lua",
+            ":py pass",
+            ":py3 pass",
+            ":perl 1",
+            ":ruby 1",
+            ":source f.vim",
+            ":so f.vim",
+            ":runtime f.vim",
+            ":terminal",
+            ":!",
+            ":!touch X",
+            ":term",
+            ":finish",
+            ":function! F()",
             // files: write, quit, read, edit, move in time
-            ":w", ":wq", ":q", ":w other.txt", ":x", ":read /etc/passwd", ":r !ls", ":e other.txt",
-            ":saveas /tmp/x", ":earlier 3f", ":later",
+            ":w",
+            ":wq",
+            ":q",
+            ":w other.txt",
+            ":x",
+            ":read /etc/passwd",
+            ":r !ls",
+            ":e other.txt",
+            ":saveas /tmp/x",
+            ":earlier 3f",
+            ":later",
             // expressions and chaining, including nested in :g and through modifiers
-            ":s/a/\\=system('id')/", ":s/a/\\=submatch(0)/e", ":put =system('id')", ":put! =1", ":put!=system('id')",
-            ":silent put! =system('id')", ":silent! put =1", ":g/^x/put! =system('id')", ":v/^x/put =1",
-            ":pu!! =1", ":s/a/b/ | !ls",
-            ":2d | call system('id')", ":g/^x/!touch Y", ":g/^x/normal ZZ", ":g/^x/call system('id')",
-            ":g/^x/s/a/\\=system(1)/", ":g/^x/ | !ls", ":silent lua os.exit(0)", ":silent! call system('1')",
-            ":v/^x/!touch Z", ":1,2d|d",
+            ":s/a/\\=system('id')/",
+            ":s/a/\\=submatch(0)/e",
+            ":put =system('id')",
+            ":put! =1",
+            ":put!=system('id')",
+            ":silent put! =system('id')",
+            ":silent! put =1",
+            ":g/^x/put! =system('id')",
+            ":v/^x/put =1",
+            ":pu!! =1",
+            ":s/a/b/ | !ls",
+            ":2d | call system('id')",
+            ":g/^x/!touch Y",
+            ":g/^x/normal ZZ",
+            ":g/^x/call system('id')",
+            ":g/^x/s/a/\\=system(1)/",
+            ":g/^x/ | !ls",
+            ":silent lua os.exit(0)",
+            ":silent! call system('1')",
+            ":v/^x/!touch Z",
+            ":1,2d|d",
             // things the parser must not mistake for an allow-listed word
-            ":se nu", ":debug 1", ":de", ":co mmand", ":S/a/b/", ":D", ":Q", ":g", ":v",
-            ":silent", ":1,2", ":", ":/unterminated", ":'a", ":2m", ":s/foo", ":s/foo/bar", "/n"
+            ":se nu",
+            ":debug 1",
+            ":de",
+            ":co mmand",
+            ":S/a/b/",
+            ":D",
+            ":Q",
+            ":g",
+            ":v",
+            ":silent",
+            ":1,2",
+            ":",
+            ":/unterminated",
+            ":'a",
+            ":2m",
+            ":s/foo",
+            ":s/foo/bar",
+            "/n",
         ] {
             assert!(safe_violation(bad).is_some(), "{bad}");
         }

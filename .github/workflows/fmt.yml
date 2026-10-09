@@ -1,0 +1,24 @@
+name: fmt
+
+# Keeps `cargo fmt --check` green: the workspace is rustfmt-formatted since issue #6, and this
+# gate stops hand-formatted code from landing again. A single Ubuntu job, so pushes to develop
+# cost seconds instead of the full test matrix.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: cargo fmt --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check

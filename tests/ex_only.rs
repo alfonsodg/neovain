@@ -11,7 +11,10 @@ fn have_nvim() -> bool {
     let nvim = std::env::var_os("NEOVAIN_NVIM").unwrap_or_else(|| "nvim".into());
     let ok = Command::new(nvim).arg("--version").output().is_ok();
     if !ok {
-        assert!(std::env::var_os("NEOVAIN_REQUIRE_NVIM").is_none(), "nvim required but not found");
+        assert!(
+            std::env::var_os("NEOVAIN_REQUIRE_NVIM").is_none(),
+            "nvim required but not found"
+        );
         eprintln!("skipping: nvim not found");
     }
     ok
@@ -66,15 +69,28 @@ fn ex_only_rejects_commands_that_leave_the_buffer() {
     let lua = c.path.with_file_name("LUA_RAN");
     for (step, marker) in [
         (format!(":!touch {}", shell.display()), shell),
-        (format!(":lua vim.fn.writefile({{1}}, '{}')", lua.display()), lua),
+        (
+            format!(":lua vim.fn.writefile({{1}}, '{}')", lua.display()),
+            lua,
+        ),
     ] {
         let o = run(step.clone());
         assert_eq!(o.status.code(), Some(1), "{step}: {}", stderr(&o));
-        assert!(stderr(&o).contains("NEOVAIN_EX_ONLY"), "{step}: {}", stderr(&o));
+        assert!(
+            stderr(&o).contains("NEOVAIN_EX_ONLY"),
+            "{step}: {}",
+            stderr(&o)
+        );
         assert!(!marker.exists(), "{step} reached the shell anyway");
         assert_eq!(c.text(), SAMPLE, "{step}");
     }
-    for step in [":python pass", ":source nope.vim", ":runtime nope.vim", ":earlier", ":normal dd"] {
+    for step in [
+        ":python pass",
+        ":source nope.vim",
+        ":runtime nope.vim",
+        ":earlier",
+        ":normal dd",
+    ] {
         let o = run(step.into());
         assert_eq!(o.status.code(), Some(1), "{step}: {}", stderr(&o));
         assert_eq!(c.text(), SAMPLE, "{step}");

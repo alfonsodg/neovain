@@ -23,10 +23,15 @@ fn installers_default_to_the_canonical_repository_and_allow_an_override() {
         "install.sh must default to {CANONICAL}"
     );
     assert!(
-        sh.contains(&format!("raw.githubusercontent.com/{CANONICAL}/main/install.sh")),
+        sh.contains(&format!(
+            "raw.githubusercontent.com/{CANONICAL}/main/install.sh"
+        )),
         "install.sh usage must point at {CANONICAL}"
     );
-    assert!(!sh.contains("kbrock84/neovain"), "install.sh still points at upstream");
+    assert!(
+        !sh.contains("kbrock84/neovain"),
+        "install.sh still points at upstream"
+    );
 
     assert!(
         ps1.contains(&format!("}} else {{ '{CANONICAL}' }}")),
@@ -36,7 +41,10 @@ fn installers_default_to_the_canonical_repository_and_allow_an_override() {
         ps1.contains("$env:NEOVAIN_REPO"),
         "install.ps1 must document NEOVAIN_REPO"
     );
-    assert!(!ps1.contains("kbrock84/neovain"), "install.ps1 still points at upstream");
+    assert!(
+        !ps1.contains("kbrock84/neovain"),
+        "install.ps1 still points at upstream"
+    );
 }
 
 #[test]
@@ -49,14 +57,21 @@ fn the_default_repository_is_the_one_every_document_names() {
         "Cargo.toml must advertise {CANONICAL}"
     );
     assert!(
-        readme.contains(&format!("raw.githubusercontent.com/{CANONICAL}/main/install.sh")),
+        readme.contains(&format!(
+            "raw.githubusercontent.com/{CANONICAL}/main/install.sh"
+        )),
         "README must install from {CANONICAL}"
     );
     assert!(
-        readme.contains(&format!("raw.githubusercontent.com/{CANONICAL}/main/install.ps1")),
+        readme.contains(&format!(
+            "raw.githubusercontent.com/{CANONICAL}/main/install.ps1"
+        )),
         "README must install from {CANONICAL}"
     );
-    assert!(!readme.contains("kbrock84/neovain"), "README still points at upstream");
+    assert!(
+        !readme.contains("kbrock84/neovain"),
+        "README still points at upstream"
+    );
 }
 
 #[test]
@@ -64,13 +79,24 @@ fn the_workflow_exercises_all_three_install_paths() {
     let wf = read(".github/workflows/installers.yml");
 
     // The default install step must not redirect the repository: it tests this fork's releases.
-    for step in wf.split("name: Install neovain and Neovim into an empty directory").skip(1) {
-        let env = &step[..step.find("run:").expect("the default install step must run something")];
-        assert!(!env.contains("NEOVAIN_REPO"), "the default install step overrides the repository");
+    for step in wf
+        .split("name: Install neovain and Neovim into an empty directory")
+        .skip(1)
+    {
+        let env = &step[..step
+            .find("run:")
+            .expect("the default install step must run something")];
+        assert!(
+            !env.contains("NEOVAIN_REPO"),
+            "the default install step overrides the repository"
+        );
     }
 
     // The explicit pin keeps its own coverage, and so does the override.
-    assert!(wf.contains("NEOVAIN_VERSION"), "the workflow must test the explicit version path");
+    assert!(
+        wf.contains("NEOVAIN_VERSION"),
+        "the workflow must test the explicit version path"
+    );
     assert!(
         wf.contains("NEOVAIN_REPO: kbrock84/neovain"),
         "the workflow must keep the NEOVAIN_REPO override coverage"

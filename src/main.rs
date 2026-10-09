@@ -106,7 +106,8 @@ fn parse_args() -> Result<Option<Args>, String> {
     let (mut safe, mut workspace) = (false, None::<PathBuf>);
     fn value<T: std::str::FromStr>(flag: &str, v: Option<String>) -> Result<T, String> {
         let v = v.ok_or_else(|| format!("{flag} needs a value"))?;
-        v.parse().map_err(|_| format!("bad value for {flag}: {v:?}"))
+        v.parse()
+            .map_err(|_| format!("bad value for {flag}: {v:?}"))
     }
     while let Some(a) = it.next() {
         // Known flags are accepted anywhere (agents often append them), so a trailing
@@ -130,18 +131,27 @@ fn parse_args() -> Result<Option<Args>, String> {
             "--sw" => sw = value(&a, it.next())?,
             "--timeout" => timeout = value(&a, it.next())?,
             "--diff" => diff = value(&a, it.next())?,
-            s if s.starts_with("--diff=") => diff = value("--diff", s.split_once('=').map(|(_, v)| v.to_string()))?,
+            s if s.starts_with("--diff=") => {
+                diff = value("--diff", s.split_once('=').map(|(_, v)| v.to_string()))?
+            }
             "--safe" => safe = true,
             "--workspace" => workspace = Some(value(&a, it.next())?),
             s if s.starts_with("--workspace=") => {
-                workspace = Some(value("--workspace", s.split_once('=').map(|(_, v)| v.to_string()))?)
+                workspace = Some(value(
+                    "--workspace",
+                    s.split_once('=').map(|(_, v)| v.to_string()),
+                )?)
             }
             s if s.starts_with("--") => return Err(format!("unknown option {s}")),
             _ => positional.push(a),
         }
     }
     safe = safe || env::var("NEOVAIN_SAFE").is_ok_and(|v| v == "1");
-    workspace = workspace.or_else(|| env::var_os("NEOVAIN_WORKSPACE").filter(|v| !v.is_empty()).map(PathBuf::from));
+    workspace = workspace.or_else(|| {
+        env::var_os("NEOVAIN_WORKSPACE")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    });
     if safe && workspace.is_none() {
         return Err("the safe profile needs a workspace root: pass --workspace DIR or set NEOVAIN_WORKSPACE".into());
     }
@@ -150,27 +160,48 @@ fn parse_args() -> Result<Option<Args>, String> {
     }
     let file = PathBuf::from(positional.remove(0));
     let timeout = Duration::from_secs_f64(timeout);
-    Ok(Some(Args { file, steps: positional, dry_run, diff, context, sw, timeout, safe, workspace }))
+    Ok(Some(Args {
+        file,
+        steps: positional,
+        dry_run,
+        diff,
+        context,
+        sw,
+        timeout,
+        safe,
+        workspace,
+    }))
 }
 
 /// Git Bash/MSYS rewrites args like '/foo<CR>' into 'C:/Program Files/Git/foo<CR>' before we see them.
 fn msys_mangled(step: &str) -> bool {
     let b = step.as_bytes();
-    (1..b.len().saturating_sub(1)).any(|i| b[i] == b':' && b[i + 1] == b'/' && b[i - 1].is_ascii_alphabetic())
+    (1..b.len().saturating_sub(1))
+        .any(|i| b[i] == b':' && b[i + 1] == b'/' && b[i - 1].is_ascii_alphabetic())
         && step.contains("/Git/")
 }
 
 fn run_nvim(a: &Args, file: &Path) -> Result<(Value, Option<Vec<u8>>), Fail> {
-    let tmp = tempfile::Builder::new().prefix("neovain-").tempdir().map_err(|e| Fail::Usage(e.to_string()))?;
-    let (driver, job_path, out, report) =
-        (tmp.path().join("driver.lua"), tmp.path().join("job.json"), tmp.path().join("out"), tmp.path().join("report.json"));
+    let tmp = tempfile::Builder::new()
+        .prefix("neovain-")
+        .tempdir()
+        .map_err(|e| Fail::Usage(e.to_string()))?;
+    let (driver, job_path, out, report) = (
+        tmp.path().join("driver.lua"),
+        tmp.path().join("job.json"),
+        tmp.path().join("out"),
+        tmp.path().join("report.json"),
+    );
     // Neovim edits a copy: a step that writes anyway writes the copy, so neovain stays the only
     // one that can touch the real file and --dry-run holds by construction. The copy has the same
     // bytes, so fileformat, indent style and the empty-file rule detect exactly as before.
     let buf = tmp.path().join("buf");
-    fs::copy(file, &buf).map_err(|e| Fail::Usage(format!("cannot copy {} for editing: {e}", file.display())))?;
+    fs::copy(file, &buf)
+        .map_err(|e| Fail::Usage(format!("cannot copy {} for editing: {e}", file.display())))?;
     let job = json!({"file": buf, "steps": a.steps, "sw": a.sw, "out": out, "report": report});
-    fs::write(&driver, DRIVER).and_then(|_| fs::write(&job_path, job.to_string())).map_err(|e| Fail::Usage(e.to_string()))?;
+    fs::write(&driver, DRIVER)
+        .and_then(|_| fs::write(&job_path, job.to_string()))
+        .map_err(|e| Fail::Usage(e.to_string()))?;
 
     let nvim = env::var_os("NEOVAIN_NVIM").unwrap_or_else(|| "nvim".into());
     let mut child = Command::new(&nvim)
@@ -181,7 +212,12 @@ fn run_nvim(a: &Args, file: &Path) -> Result<(Value, Option<Vec<u8>>), Fail> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| Fail::Usage(format!("cannot run {}: {e} (is Neovim installed?)", nvim.to_string_lossy())))?;
+        .map_err(|e| {
+            Fail::Usage(format!(
+                "cannot run {}: {e} (is Neovim installed?)",
+                nvim.to_string_lossy()
+            ))
+        })?;
 
     let start = Instant::now();
     let status = loop {
@@ -200,7 +236,8 @@ fn run_nvim(a: &Args, file: &Path) -> Result<(Value, Option<Vec<u8>>), Fail> {
     };
 
     let report: Value = match fs::read_to_string(&report) {
-        Ok(s) => serde_json::from_str(&s).map_err(|e| Fail::Usage(format!("bad report from nvim: {e}")))?,
+        Ok(s) => serde_json::from_str(&s)
+            .map_err(|e| Fail::Usage(format!("bad report from nvim: {e}")))?,
         Err(_) => {
             let mut stderr = String::new();
             if let Some(mut e) = child.stderr.take() {
@@ -225,7 +262,11 @@ fn run_nvim(a: &Args, file: &Path) -> Result<(Value, Option<Vec<u8>>), Fail> {
 }
 
 fn last_line(report: &Value) -> i64 {
-    report["steps"].as_array().and_then(|s| s.last()).and_then(|s| s["line"].as_i64()).unwrap_or(1)
+    report["steps"]
+        .as_array()
+        .and_then(|s| s.last())
+        .and_then(|s| s["line"].as_i64())
+        .unwrap_or(1)
 }
 
 fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
@@ -248,7 +289,13 @@ fn shape(diff: &TextDiff<str>, context: usize) -> (usize, usize) {
     };
     let hunks = diff.grouped_ops(context);
     // Two lines name the file, and one starts each hunk.
-    (hunks.len(), 2 + hunks.iter().map(|hunk| 1 + hunk.iter().map(lines).sum::<usize>()).sum::<usize>())
+    (
+        hunks.len(),
+        2 + hunks
+            .iter()
+            .map(|hunk| 1 + hunk.iter().map(lines).sum::<usize>())
+            .sum::<usize>(),
+    )
 }
 
 fn run(a: Args) -> Result<(), Fail> {
@@ -258,10 +305,15 @@ fn run(a: Args) -> Result<(), Fail> {
     }
     // Confinement resolves symlinks and `..` on both sides before anything else runs.
     if let Some(root) = &a.workspace {
-        let root = fs::canonicalize(root).map_err(|e| Fail::Usage(format!("cannot use workspace {}: {e}", root.display())))?;
+        let root = fs::canonicalize(root)
+            .map_err(|e| Fail::Usage(format!("cannot use workspace {}: {e}", root.display())))?;
         let target = fs::canonicalize(&a.file).map_err(|e| Fail::Usage(e.to_string()))?;
         if !target.starts_with(&root) {
-            return Err(Fail::Usage(format!("{} is outside the workspace {}", a.file.display(), root.display())));
+            return Err(Fail::Usage(format!(
+                "{} is outside the workspace {}",
+                a.file.display(),
+                root.display()
+            )));
         }
     }
     for (i, s) in a.steps.iter().enumerate() {
@@ -286,19 +338,30 @@ fn run(a: Args) -> Result<(), Fail> {
     if env::var("NEOVAIN_EX_ONLY").is_ok_and(|v| v == "1") {
         for (i, s) in a.steps.iter().enumerate() {
             if let Some(why) = validate::ex_only_violation(s) {
-                return Err(Fail::Step(format!("FAILED at step {} {s:?}: {why}\nfile unchanged", i + 1)));
+                return Err(Fail::Step(format!(
+                    "FAILED at step {} {s:?}: {why}\nfile unchanged",
+                    i + 1
+                )));
             }
         }
     }
     let before = fs::read(&a.file).map_err(|e| Fail::Usage(e.to_string()))?;
     let abs = fs::canonicalize(&a.file).map_err(|e| Fail::Usage(e.to_string()))?;
     // canonicalize on Windows yields \\?\C:\..., which nvim can't open; strip the verbatim prefix.
-    let abs = PathBuf::from(abs.to_string_lossy().trim_start_matches(r"\\?\").to_string());
+    let abs = PathBuf::from(
+        abs.to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_string(),
+    );
     let (report, after) = run_nvim(&a, &abs)?;
 
     let Some(after) = after else {
         let i = report["failed"].as_u64().unwrap_or(0) as usize;
-        let step = a.steps.get(i.wrapping_sub(1)).map(String::as_str).unwrap_or("?");
+        let step = a
+            .steps
+            .get(i.wrapping_sub(1))
+            .map(String::as_str)
+            .unwrap_or("?");
         return Err(Fail::Step(format!(
             "FAILED at step {i} {step:?}: {}\ncursor was on line {}; file unchanged",
             report["error"].as_str().unwrap_or("unknown error"),
@@ -310,23 +373,36 @@ fn run(a: Args) -> Result<(), Fail> {
     for (i, st) in report["steps"].as_array().into_iter().flatten().enumerate() {
         let s = st["step"].as_str().unwrap_or("");
         if !s.starts_with(['@', ':']) && st["changed"] == false && st["moved"] == false {
-            let _ = writeln!(err, "warning: step {} {s:?} had no effect (incomplete or invalid command?)", i + 1);
+            let _ = writeln!(
+                err,
+                "warning: step {} {s:?} had no effect (incomplete or invalid command?)",
+                i + 1
+            );
         }
     }
 
     let mut out = std::io::stdout().lock();
     if after == before {
-        let _ = writeln!(out, "no change (cursor ended on line {})", last_line(&report));
+        let _ = writeln!(
+            out,
+            "no change (cursor ended on line {})",
+            last_line(&report)
+        );
         return Ok(());
     }
-    let (old, new) = (String::from_utf8_lossy(&before), String::from_utf8_lossy(&after));
+    let (old, new) = (
+        String::from_utf8_lossy(&before),
+        String::from_utf8_lossy(&after),
+    );
     let name = a.file.display().to_string();
     // The diff asked for with `--diff full` is the one 0.1.0 printed, however long it takes.
     // Any other may give way to the summary, and stops being exact when its time is up. That
     // is after the time it is given, or when the whole run has taken as long as --timeout.
     let until = |time: Duration| {
         let given = Instant::now() + time;
-        started.checked_add(a.timeout).map_or(given, |end| end.min(given))
+        started
+            .checked_add(a.timeout)
+            .map_or(given, |end| end.min(given))
     };
     let (mut config, deadline) = (TextDiff::configure(), until(summary::DIFF_TIME));
     if a.diff != Mode::Full {
@@ -334,24 +410,47 @@ fn run(a: Args) -> Result<(), Fail> {
     }
     let diff = config.diff_lines(old.as_ref(), new.as_ref());
     let rough = a.diff != Mode::Full && Instant::now() >= deadline;
-    let (added, removed) = diff.ops().iter().filter(|op| op.tag() != DiffTag::Equal).fold((0, 0), |(added, removed), op| {
-        (added + op.new_range().len(), removed + op.old_range().len())
-    });
+    let (added, removed) = diff
+        .ops()
+        .iter()
+        .filter(|op| op.tag() != DiffTag::Equal)
+        .fold((0, 0), |(added, removed), op| {
+            (added + op.new_range().len(), removed + op.old_range().len())
+        });
     // What to print depends on the change, not on the context asked for with -C.
     let (hunks, lines) = shape(&diff, DEFAULT_CONTEXT);
-    let short = !rough && added + removed <= summary::FULL_DIFF_MAX_CHANGED && lines <= summary::OUTPUT_MAX_LINES;
+    let short = !rough
+        && added + removed <= summary::FULL_DIFF_MAX_CHANGED
+        && lines <= summary::OUTPUT_MAX_LINES;
     let found = summary::analyze(&old, &new, until(summary::ANALYSIS_TIME));
     if a.diff == Mode::Full || (a.diff == Mode::Auto && short) {
-        let full = diff.unified_diff().context_radius(a.context).header(&name, &name).to_string();
+        let full = diff
+            .unified_diff()
+            .context_radius(a.context)
+            .header(&name, &name)
+            .to_string();
         let _ = write!(out, "{full}");
         // Warnings follow the diff, after an empty line. Without any, this is what 0.1.0 printed.
         let warnings = summary::warnings(&found);
         if !warnings.is_empty() {
-            let _ = write!(out, "{}\n{warnings}", if full.ends_with('\n') { "" } else { "\n" });
+            let _ = write!(
+                out,
+                "{}\n{warnings}",
+                if full.ends_with('\n') { "" } else { "\n" }
+            );
         }
     } else {
-        let hunks = if a.context == DEFAULT_CONTEXT { hunks } else { shape(&diff, a.context).0 };
-        let totals = summary::Totals { added, removed, hunks, rough };
+        let hunks = if a.context == DEFAULT_CONTEXT {
+            hunks
+        } else {
+            shape(&diff, a.context).0
+        };
+        let totals = summary::Totals {
+            added,
+            removed,
+            hunks,
+            rough,
+        };
         let _ = write!(out, "{}", summary::render(&found, &name, &totals));
     }
     if a.dry_run {
@@ -387,7 +486,6 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::msys_mangled;
-
 
     #[test]
     fn detects_msys_mangling() {
