@@ -5,7 +5,7 @@
 # neovain drives Neovim, so the script also checks for Neovim 0.9 or newer. If it is missing or
 # too old, the script asks before installing it. Nothing here needs administrator rights.
 #
-# $env:NEOVAIN_VERSION       release to install, e.g. v0.1.0 (default: the latest release)
+# $env:NEOVAIN_VERSION       release to install, e.g. v0.2.0 (default: the latest release)
 # $env:NEOVAIN_REPO          where to install from, owner/repo (default: alfonsodg/neovain)
 # $env:NEOVAIN_INSTALL_DIR   where to put neovain.exe (default: %LOCALAPPDATA%\Programs\neovain)
 # $env:NEOVAIN_NVIM_DIR      where to unpack Neovim (default: %LOCALAPPDATA%\Programs)

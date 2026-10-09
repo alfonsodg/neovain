@@ -1,5 +1,7 @@
 //! The installers, the package metadata and the README must all resolve to the same repository,
-//! so installing from this repository installs this repository's release (issue #4).
+//! so installing from this repository installs this repository's release, and the installer
+//! workflow must exercise all three documented paths: the default source, an explicit
+//! NEOVAIN_VERSION pin and the NEOVAIN_REPO override (issue #4).
 
 use std::fs;
 
@@ -55,4 +57,26 @@ fn the_default_repository_is_the_one_every_document_names() {
         "README must install from {CANONICAL}"
     );
     assert!(!readme.contains("kbrock84/neovain"), "README still points at upstream");
+}
+
+#[test]
+fn the_workflow_exercises_all_three_install_paths() {
+    let wf = read(".github/workflows/installers.yml");
+
+    // The default install step must not redirect the repository: it tests this fork's releases.
+    for step in wf.split("name: Install neovain and Neovim into an empty directory").skip(1) {
+        let env = &step[..step.find("run:").expect("the default install step must run something")];
+        assert!(!env.contains("NEOVAIN_REPO"), "the default install step overrides the repository");
+    }
+
+    // The explicit pin keeps its own coverage, and so does the override.
+    assert!(wf.contains("NEOVAIN_VERSION"), "the workflow must test the explicit version path");
+    assert!(
+        wf.contains("NEOVAIN_REPO: kbrock84/neovain"),
+        "the workflow must keep the NEOVAIN_REPO override coverage"
+    );
+    assert!(
+        !wf.contains("do not exist yet"),
+        "the workflow still assumes this fork has no releases"
+    );
 }

@@ -332,7 +332,7 @@ latest one. Everything goes into your user directory, so nothing needs sudo or a
 rights.
 
 For scripts and agents, answer the questions ahead of time: `NEOVAIN_INSTALL_NVIM=yes` (or `no`),
-and on Windows `NEOVAIN_ADD_TO_PATH=yes` (or `no`). `NEOVAIN_VERSION=v0.1.0` pins a release.
+and on Windows `NEOVAIN_ADD_TO_PATH=yes` (or `no`). `NEOVAIN_VERSION=v0.2.0` pins a release.
 `NEOVAIN_REPO=owner/repo` installs from a different repository than this one.
 
 Or build from source with Rust:
