@@ -19,6 +19,10 @@ merging it. Updated whenever the branch state changes.
   - `f9a5c46` — `ci(installers)`: the installer workflow exercises
     the default source, an explicit `NEOVAIN_VERSION` pin and the
     `NEOVAIN_REPO` override, against the fork's `v0.2.0` release (#4).
+  - `6780d0d` — `style(fmt)`: the workspace is rustfmt-formatted
+    and `fmt.yml` gates `cargo fmt --check` (#6).
+  - `6df6170` — `fix(summary)`: the two pre-existing clippy
+    warnings in `src/summary.rs` (#7).
 - **`main`** — the six commits of
   [PR #18](https://github.com/kbrock84/neovain/pull/18) to the upstream
   (`kbrock84/neovain`): write/quit steps rejected, ex-only rejects the
@@ -64,7 +68,7 @@ merging it. Updated whenever the branch state changes.
   agent had closed them directly, which the workflow forbids. Their
   evidence stands and their commits belong to PR #18; closing them is
   the developer's call.
-- Issues #4 and #5 carry their re-audit evidence and also sit in
+- Issues #4, #5, #6 and #7 carry their evidence and also sit in
   `status::review`; their fixes are merged into `develop` and
   closing them is the developer's call.
 
