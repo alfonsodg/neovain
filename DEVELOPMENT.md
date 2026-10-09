@@ -16,10 +16,9 @@ merging it. Updated whenever the branch state changes.
   - `f9a85f9` — `fix(safe)`: the optional `!` before the `=` register
     is normalized, so `:put! =...`, `:silent put! =...` and the
     `:g`/`:v` nests are refused again (#5, re-audit).
-- **`issue-4-release-path`** — the #4 re-audit follow-up: the
-  installer workflow exercises the default source, an explicit
-  `NEOVAIN_VERSION` pin and the `NEOVAIN_REPO` override. Awaits
-  merge into `develop`.
+  - `f9a5c46` — `ci(installers)`: the installer workflow exercises
+    the default source, an explicit `NEOVAIN_VERSION` pin and the
+    `NEOVAIN_REPO` override, against the fork's `v0.2.0` release (#4).
 - **`main`** — the six commits of
   [PR #18](https://github.com/kbrock84/neovain/pull/18) to the upstream
   (`kbrock84/neovain`): write/quit steps rejected, ex-only rejects the
@@ -61,6 +60,9 @@ merging it. Updated whenever the branch state changes.
   agent had closed them directly, which the workflow forbids. Their
   evidence stands and their commits belong to PR #18; closing them is
   the developer's call.
+- Issues #4 and #5 carry their re-audit evidence and also sit in
+  `status::review`; their fixes are merged into `develop` and
+  closing them is the developer's call.
 
 ## Verification
 
