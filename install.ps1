@@ -1,11 +1,12 @@
 # Install neovain on Windows:
 #
-#   irm https://raw.githubusercontent.com/kbrock84/neovain/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/alfonsodg/neovain/main/install.ps1 | iex
 #
 # neovain drives Neovim, so the script also checks for Neovim 0.9 or newer. If it is missing or
 # too old, the script asks before installing it. Nothing here needs administrator rights.
 #
 # $env:NEOVAIN_VERSION       release to install, e.g. v0.1.0 (default: the latest release)
+# $env:NEOVAIN_REPO          where to install from, owner/repo (default: alfonsodg/neovain)
 # $env:NEOVAIN_INSTALL_DIR   where to put neovain.exe (default: %LOCALAPPDATA%\Programs\neovain)
 # $env:NEOVAIN_NVIM_DIR      where to unpack Neovim (default: %LOCALAPPDATA%\Programs)
 # $env:NEOVAIN_INSTALL_NVIM  yes or no: answer the Neovim question ahead of time
@@ -19,7 +20,7 @@
     $ProgressPreference = 'SilentlyContinue'
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-    $repo = 'kbrock84/neovain'
+    $repo = if ($env:NEOVAIN_REPO) { $env:NEOVAIN_REPO } else { 'alfonsodg/neovain' }
     $programs = Join-Path $env:LOCALAPPDATA 'Programs'
     $dir = if ($env:NEOVAIN_INSTALL_DIR) { $env:NEOVAIN_INSTALL_DIR } else { Join-Path $programs 'neovain' }
     $nvimRoot = if ($env:NEOVAIN_NVIM_DIR) { $env:NEOVAIN_NVIM_DIR } else { $programs }

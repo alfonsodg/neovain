@@ -281,28 +281,29 @@ neovain needs [Neovim](https://neovim.io) 0.9 or newer on `PATH`, or `NEOVAIN_NV
 On Linux and macOS:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/kbrock84/neovain/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/alfonsodg/neovain/main/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```
-irm https://raw.githubusercontent.com/kbrock84/neovain/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/alfonsodg/neovain/main/install.ps1 | iex
 ```
 
 The installer downloads the prebuilt binary for your machine from the
-[releases page](https://github.com/kbrock84/neovain/releases) and verifies its checksum. It then
+[releases page](https://github.com/alfonsodg/neovain/releases) and verifies its checksum. It then
 checks for Neovim 0.9 or newer. If Neovim is missing or too old, it asks before installing the
 latest one. Everything goes into your user directory, so nothing needs sudo or administrator
 rights.
 
 For scripts and agents, answer the questions ahead of time: `NEOVAIN_INSTALL_NVIM=yes` (or `no`),
 and on Windows `NEOVAIN_ADD_TO_PATH=yes` (or `no`). `NEOVAIN_VERSION=v0.1.0` pins a release.
+`NEOVAIN_REPO=owner/repo` installs from a different repository than this one.
 
 Or build from source with Rust:
 
 ```
-cargo install --git https://github.com/kbrock84/neovain
+cargo install --git https://github.com/alfonsodg/neovain
 ```
 
 ## Windows / Git Bash

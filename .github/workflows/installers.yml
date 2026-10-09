@@ -26,6 +26,9 @@ jobs:
       - name: Install neovain and Neovim into an empty directory
         env:
           NEOVAIN_INSTALL_NVIM: "yes"
+          # The installer defaults to this repository's releases, which do not exist yet; point it
+          # at the upstream releases to exercise the download, checksum and NEOVAIN_REPO override.
+          NEOVAIN_REPO: kbrock84/neovain
           NEOVAIN_INSTALL_DIR: ${{ runner.temp }}/bin
           NEOVAIN_NVIM_DIR: ${{ runner.temp }}/opt
         run: |
@@ -43,6 +46,7 @@ jobs:
       - name: Declining leaves Neovim uninstalled
         env:
           NEOVAIN_INSTALL_NVIM: "no"
+          NEOVAIN_REPO: kbrock84/neovain
           NEOVAIN_INSTALL_DIR: ${{ runner.temp }}/bin2
           NEOVAIN_NVIM_DIR: ${{ runner.temp }}/opt2
         run: |
@@ -67,6 +71,9 @@ jobs:
         env:
           NEOVAIN_INSTALL_NVIM: "yes"
           NEOVAIN_ADD_TO_PATH: "no"
+          # The installer defaults to this repository's releases, which do not exist yet; point it
+          # at the upstream releases to exercise the download, checksum and NEOVAIN_REPO override.
+          NEOVAIN_REPO: kbrock84/neovain
           NEOVAIN_INSTALL_DIR: ${{ runner.temp }}\bin
           NEOVAIN_NVIM_DIR: ${{ runner.temp }}\opt
         run: |
