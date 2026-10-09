@@ -138,6 +138,234 @@ pub(crate) fn ex_only_violation(step: &str) -> Option<&'static str> {
     EX_ONLY_NO_CODE.contains(&word).then_some("commands that run code outside the buffer are disabled (NEOVAIN_EX_ONLY)")
 }
 
+
+// ---- the agent-safe profile ----
+
+/// The ex commands the safe profile allows: buffer edits that evaluate nothing, execute
+/// nothing and touch no file but the one being edited. An allow-list, so a command word the
+/// parser does not recognize is rejected instead of passed through. Every entry was checked
+/// against a real nvim (`:help`-documented name or probed short form).
+pub(crate) const SAFE_COMMANDS: &[&str] = &[
+    "a", "append", "c", "change", "co", "copy", "d", "delete", "g", "global", "i", "insert", "j", "join", "m",
+    "move", "pu", "put", "retab", "s", "sort", "substitute", "t", "u", "undo", "v", "vglobal", "y", "yank",
+];
+
+/// Command modifiers the safe profile honors: they change messages, marks, the alternate file
+/// and autocmds, never what the command does.
+const SAFE_MODIFIERS: &[&str] = &["silent", "keepalt", "keepjumps", "keeppatterns", "lockmarks", "noautocmd"];
+
+/// The text between two unescaped `delim` and what follows the closing one, or None when the
+/// delimiter never closes.
+fn segment(s: &str, delim: u8) -> Option<(&str, &str)> {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'\\' {
+            i += 2;
+            continue;
+        }
+        if b[i] == delim {
+            return Some((&s[..i], &s[i + 1..]));
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Drop leading command modifiers (`silent! `), stopping at the first word that is not one.
+fn strip_modifiers(mut s: &str) -> &str {
+    loop {
+        let before = s;
+        for m in SAFE_MODIFIERS {
+            if let Some(rest) = s.strip_prefix(m) {
+                let rest = rest.strip_prefix('!').unwrap_or(rest);
+                if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+                    s = rest.trim_start();
+                    break;
+                }
+            }
+        }
+        if s == before {
+            return s;
+        }
+    }
+}
+
+/// One address: `%`, `.`, `$`, digits, `'x`, `` `x ``, `+1`, `-1`, `/pat/`, `?pat?`. An
+/// unterminated pattern consumes nothing: the caller then reads no command word and fails
+/// closed.
+fn one_address(s: &str) -> &str {
+    let b = s.as_bytes();
+    if b.is_empty() {
+        return s;
+    }
+    match b[0] {
+        b'%' | b'.' | b'$' => &s[1..],
+        b'0'..=b'9' | b'+' | b'-' => &s[1 + b[1..].iter().take_while(|c| c.is_ascii_digit()).count()..],
+        b'\'' | b'`' if b.len() >= 2 && b[1].is_ascii_alphanumeric() => &s[2..],
+        b'/' | b'?' => {
+            let delim = b[0];
+            let mut i = 1;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i] == delim {
+                    return &s[i + 1..];
+                }
+                i += 1;
+            }
+            s
+        }
+        _ => s,
+    }
+}
+
+/// The address range: one or more addresses separated by `,` or `;`.
+fn strip_range(s: &str) -> (&str, bool) {
+    let (mut r, mut n) = (s, 0);
+    loop {
+        let before = r;
+        r = one_address(r);
+        if r == before {
+            break;
+        }
+        n += 1;
+        match r.as_bytes().first() {
+            Some(b',') | Some(b';') => r = &r[1..],
+            _ => break,
+        }
+    }
+    (r, n > 0)
+}
+
+/// The command word of an ex step (already without its `:`) and what follows it, past
+/// modifiers and the address range. None when there is no alphabetic command word at all,
+/// which the safe profile treats as a violation: nothing it cannot read may run.
+fn ex_head(cmd: &str) -> Option<(&str, &str)> {
+    let mut s = cmd;
+    loop {
+        let (after_range, _) = strip_range(strip_modifiers(s));
+        if after_range == s {
+            break;
+        }
+        s = after_range;
+    }
+    let word_end = s.bytes().take_while(|b| b.is_ascii_alphabetic()).count();
+    let (word, tail) = s.split_at(word_end);
+    (!word.is_empty()).then_some((word, tail))
+}
+
+const NOT_ALLOWED: &str =
+    "not an allow-listed buffer edit; the safe profile runs no code, no shell, no file I/O and no chaining";
+
+/// Whether a full ex step (without its `:`) passes the safe profile, and why not.
+fn safe_ex(cmd: &str) -> Option<&'static str> {
+    let Some((word, tail)) = ex_head(cmd) else {
+        return Some("cannot read the command word of this step (safe profile)");
+    };
+    // Uppercase words are rejected with the rest: nvim itself only knows lowercase commands.
+    if !word.bytes().all(|b| b.is_ascii_lowercase()) || !SAFE_COMMANDS.contains(&word) {
+        return Some(NOT_ALLOWED);
+    }
+    match word {
+        // Move, copy and friends take an address and nothing else: junk behind them is a
+        // violation, and an address that eats a `|` is a chain.
+        "m" | "move" | "t" | "co" | "copy" => address_tail(tail),
+        "s" | "substitute" => substitute_tail(tail),
+        "g" | "v" | "global" | "vglobal" => global_tail(tail),
+        "pu" | "put" => put_tail(tail),
+        _ => plain_tail(tail),
+    }
+}
+
+/// The argument of a command that only takes an address: an address, then nothing. nvim
+/// rejects the incomplete forms with E16, and so does the profile, before it starts.
+fn address_tail(tail: &str) -> Option<&'static str> {
+    let (rest, had_range) = strip_range(tail.trim_start());
+    if !had_range || !rest.trim().is_empty() {
+        return Some("this command needs an address and nothing else (safe profile)");
+    }
+    None
+}
+
+/// `:put` with an optional `!` and then a register: `=` evaluates vimscript, so it is
+/// refused in every form it can be written in -- `:put =x`, `:put! =x`, `:put!=x`, under a
+/// modifier or nested in `:g`. A normal register is a buffer edit like any other.
+fn put_tail(tail: &str) -> Option<&'static str> {
+    let mut rest = tail.trim_start();
+    while let Some(after) = rest.strip_prefix('!') {
+        rest = after.trim_start();
+    }
+    if rest.starts_with('=') {
+        return Some("the = expression register evaluates vimscript (safe profile)");
+    }
+    plain_tail(tail)
+}
+
+/// Chaining is off everywhere: `|` would run a second command this profile never checked.
+fn plain_tail(tail: &str) -> Option<&'static str> {
+    tail.contains('|').then_some("`|` chains a second command (disabled in the safe profile)")
+}
+
+/// `:s/{pattern}/{replacement}/{flags}`, with no expression replacement.
+fn substitute_tail(tail: &str) -> Option<&'static str> {
+    if tail.is_empty() {
+        return None;
+    }
+    let delim = tail.as_bytes()[0];
+    if delim.is_ascii_alphanumeric() || delim == b'\\' || delim.is_ascii_whitespace() {
+        return Some("cannot read the delimiters of this :s (safe profile)");
+    }
+    let Some((_, after_pat)) = segment(&tail[1..], delim) else {
+        return Some("unterminated pattern in this :s (safe profile)");
+    };
+    let Some((repl, flags)) = segment(after_pat, delim) else {
+        return Some("unterminated replacement in this :s (safe profile)");
+    };
+    if repl.contains("\\=") {
+        return Some("a \\= replacement evaluates vimscript (safe profile)");
+    }
+    if !flags.bytes().all(|b| b.is_ascii_alphabetic()) {
+        return Some("trailing text after the :s flags (safe profile)");
+    }
+    None
+}
+
+/// `:g/{pattern}/{command}`, where the command goes through the whole profile again.
+fn global_tail(tail: &str) -> Option<&'static str> {
+    let b = tail.as_bytes();
+    if b.is_empty() {
+        return Some(":g needs a pattern (safe profile)");
+    }
+    let delim = b[0];
+    if delim.is_ascii_alphanumeric() || delim == b'\\' || delim.is_ascii_whitespace() {
+        return Some("cannot read the pattern of this :g (safe profile)");
+    }
+    let Some((_, rest)) = segment(&tail[1..], delim) else {
+        return Some("unterminated :g pattern (safe profile)");
+    };
+    // An empty :g command only prints, and the rest is validated as if it stood alone.
+    if rest.is_empty() {
+        None
+    } else {
+        safe_ex(rest)
+    }
+}
+
+/// A step the agent-safe profile accepts, or why not. Anchors are pure cursor movement;
+/// ex steps must parse and sit on the allow-list; anything else, keys included, is rejected.
+pub(crate) fn safe_violation(step: &str) -> Option<&'static str> {
+    if step.starts_with('@') {
+        return None;
+    }
+    match step.strip_prefix(':') {
+        None => Some("normal-mode keys are disabled in the safe profile; use @anchor and :ex steps"),
+        Some(cmd) => safe_ex(cmd),
+    }
+}
+
 #[cfg(test)]
 mod tests {
 use super::*;
@@ -178,5 +406,53 @@ use super::*;
         assert!(!keys_write_or_quit("/a:ZZ<CR>"));
         assert!(keys_write_or_quit("iZZ<Esc>ZZ"));
         assert!(keys_write_or_quit("dd<Esc>:w<CR>"));
+    }
+
+    #[test]
+    fn the_safe_profile_allows_buffer_edits() {
+        for ok in ["@^def", "@2@open(", ":%s/a/b/g", ":1s/a/b/", ":.,$d", ":2m$", ":10,20t$", ":2co$",
+            ":g/^#/d", ":v/^import/d", ":g/^x/s/a/b/", ":g/a\\/b/d", ":put a", ":put! a", ":2y", ":sort u", ":1retab",
+            ":silent s/a/b/", ":silent! 1d", ":keepjumps 1,2d", ":/$t/d", ":?a?d", ":'a,'bd", ":1,2join",
+            ":u", ":undo", ":c", ":append", ":sort!", ":change", ":g/^t/d", ":s", ":1,+2m$"] {
+            assert!(safe_violation(ok).is_none(), "{ok}");
+        }
+    }
+
+    #[test]
+    fn the_safe_profile_rejects_code_shell_files_and_chaining() {
+        for bad in [
+            // keys, and the ex commands that run code or leave the buffer
+            "dd", "ciwx<Esc>", "ZZ", ":call system('id')", ":echo system('id')", ":let @a=1", ":if 1",
+            ":execute '!ls'", ":execute 'norm dd'", ":normal ZZ", ":norm dd", ":lua os.exit(0)",
+            ":luafile f.lua", ":py pass", ":py3 pass", ":perl 1", ":ruby 1", ":source f.vim", ":so f.vim",
+            ":runtime f.vim", ":terminal", ":!", ":!touch X", ":term", ":finish", ":function! F()",
+            // files: write, quit, read, edit, move in time
+            ":w", ":wq", ":q", ":w other.txt", ":x", ":read /etc/passwd", ":r !ls", ":e other.txt",
+            ":saveas /tmp/x", ":earlier 3f", ":later",
+            // expressions and chaining, including nested in :g and through modifiers
+            ":s/a/\\=system('id')/", ":s/a/\\=submatch(0)/e", ":put =system('id')", ":put! =1", ":put!=system('id')",
+            ":silent put! =system('id')", ":silent! put =1", ":g/^x/put! =system('id')", ":v/^x/put =1",
+            ":pu!! =1", ":s/a/b/ | !ls",
+            ":2d | call system('id')", ":g/^x/!touch Y", ":g/^x/normal ZZ", ":g/^x/call system('id')",
+            ":g/^x/s/a/\\=system(1)/", ":g/^x/ | !ls", ":silent lua os.exit(0)", ":silent! call system('1')",
+            ":v/^x/!touch Z", ":1,2d|d",
+            // things the parser must not mistake for an allow-listed word
+            ":se nu", ":debug 1", ":de", ":co mmand", ":S/a/b/", ":D", ":Q", ":g", ":v",
+            ":silent", ":1,2", ":", ":/unterminated", ":'a", ":2m", ":s/foo", ":s/foo/bar", "/n"
+        ] {
+            assert!(safe_violation(bad).is_some(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_safe_profile_reads_ranges_that_look_like_commands() {
+        // The command word is past the range, whatever the range looks like: a write hiding
+        // behind a pattern or marks is not an allow-listed edit either.
+        for bad in [":/needle/w! /tmp/x", ":'a,'bw", ":/a/b/c", ":1,2w"] {
+            assert!(safe_violation(bad).is_some(), "{bad}");
+        }
+        for ok in [":/needle/d", ":'a,'bt$"] {
+            assert!(safe_violation(ok).is_none(), "{ok}");
+        }
     }
 }

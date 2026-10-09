@@ -274,6 +274,41 @@ With `NEOVAIN_EX_ONLY=1`, only `@anchor` and `:ex` steps are accepted. Normal-mo
 ex-command editing, and it blocks the obvious ways out of the buffer, but ex commands are
 vimscript: `:call system('…')` still runs a shell. Do not use it to run untrusted steps.
 
+## Agent-safe profile
+
+With `--safe` (or `NEOVAIN_SAFE=1`) plus a workspace root, `--workspace DIR`
+(or `NEOVAIN_WORKSPACE=DIR`), neovain runs every step under two independent
+controls. This is the profile for model-generated steps against a local
+project:
+
+- **An allow-list instead of a deny-list.** Only `@anchor` steps and ex
+  commands from a fixed list of buffer edits are accepted: `:s`, `:d`, `:m`,
+  `:t`/`:co`, `:g`/`:v` (whose nested command goes through the same list),
+  `:a`, `:i`, `:c`, `:j`, `:pu`, `:y`, `:sort`, `:retab` and `:undo`, short or
+  full. Everything else is refused before Neovim starts: `:!`, `:call`,
+  `:execute`, `:normal`, `:lua`, `:source`, `:read`, `:w`, chained commands
+  (`|`), expression replacements (`\=`), the `=` register, normal-mode keys,
+  and anything the parser cannot read. `:call system('...')` never runs.
+- **The target must live in the workspace.** Both paths are canonicalized, so
+  `..` traversal and a symlink that leaves the directory are refused.
+  `--workspace` works on its own too, confining the target without the
+  allow-list.
+
+A refused command or path is a usage error (exit 2); a failing step keeps the
+usual semantics (exit 1, file unchanged). The default mode and
+`NEOVAIN_EX_ONLY=1` are untouched: the profile is opt-in.
+
+For an OpenCode wrapper:
+
+```bash
+export NEOVAIN_SAFE=1 NEOVAIN_WORKSPACE="$PWD"
+neovain app.py '@^def load' ':%s/\<load(/read_file(/g'
+```
+
+The profile confines the commands and the path inside one Neovim process; it
+is not a kernel sandbox. Reach for it, not ex-only, when the steps come from a
+model.
+
 ## Install
 
 neovain needs [Neovim](https://neovim.io) 0.9 or newer on `PATH`, or `NEOVAIN_NVIM` pointing at one.

@@ -34,10 +34,19 @@ and this project adheres to [Semantic Versioning]
   indented but no enclosing block starts above it (left behind by a range?)`,
   but only where the edit created the situation, so a file that already stood
   that way is not warned about on every change to it (`a8d9bf5`).
+- **An agent-safe profile** (`--safe` / `NEOVAIN_SAFE=1`, with `--workspace DIR`
+  / `NEOVAIN_WORKSPACE=DIR`): an allow-list of buffer edits instead of a
+  deny-list, plus the target canonicalized inside the workspace. `:!`, `:call`,
+  `:execute`, `:normal`, `:lua`, `:source`, `:read`, `:w`, chained commands,
+  expression replacements and normal-mode keys are refused before Neovim
+  starts, and so is a target outside the workspace (`..` and symlinks
+  included). The default mode and `NEOVAIN_EX_ONLY=1` behave exactly as
+  before; the README's "Agent-safe profile" section has the contract (#19).
 
 ### Documentation
 
 - The README and [neovain.dev](https://neovain.dev) document the single-writer
-  guarantee, the full ex-only contract and the new warning.
+  guarantee, the full ex-only contract, the new warning and the agent-safe
+  profile.
 
 [Unreleased]: https://github.com/alfonsodg/neovain/compare/v0.2.0...HEAD
