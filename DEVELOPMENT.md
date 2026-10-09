@@ -28,16 +28,27 @@ merging it. Updated whenever the branch state changes.
   (`kbrock84/neovain`): write/quit steps rejected, ex-only rejects the
   buffer leavers, the range orphan warning, and their docs and tests.
   Frozen at `289c4ae` while that pull request is open.
+- **`issue-19-safe-profile`** — from `main` (`289c4ae` + `29aea77`):
+  the safe profile (`7d66aeb` + `f9a85f9`) squashed into one commit,
+  proposed upstream as
+  [issue #19](https://github.com/kbrock84/neovain/issues/19) and
+  [PR #20](https://github.com/kbrock84/neovain/pull/20) (draft,
+  stacked on #18 — it shows #18's commits until that merges, then
+  collapses to `29aea77`). Fork-specific content was stripped: the #4
+  installer entry dropped from the CHANGELOG, `(#5)` rewritten to
+  `(#19)`.
 
 ## Merge rules
 
 - Do not merge `develop` into `main` while PR #18 is open. `main` is
   the pull request's source branch, and `e9d5854` (#4) points the
   installers at this fork: proposing that upstream would be wrong.
-- The safe profile (`7d66aeb`, #5) could be valuable upstream on its
-  own. If the maintainer wants it, cherry-pick it onto a branch from
-  `main` and open a separate pull request; do not carry it through #18
-  by merging `develop`.
+- The safe profile (`7d66aeb`, #5) has been upstreamed: cherry-picked
+  from `main` onto `issue-19-safe-profile` and proposed as
+  kbrock84/neovain#19 + PR #20. That was the whole approved upstream
+  scope — the clippy fixes (#7) and the rustfmt gate (#6) stay
+  fork-only unless asked otherwise. Do not carry the profile through
+  #18 by merging `develop`.
 - `main` stays untouched until PR #18 is merged or closed.
 - The agent never closes an issue: the criteria evidence goes in an
   issue comment and the issue moves to `status::review`; the
@@ -71,6 +82,12 @@ merging it. Updated whenever the branch state changes.
 - Issues #4, #5, #6 and #7 carry their evidence and also sit in
   `status::review`; their fixes are merged into `develop` and
   closing them is the developer's call.
+- The upstream issue tracker (`kbrock84/neovain`) had never carried an
+  issue; #19 (the safe-profile proposal, with the README-markdownlint
+  bypass recorded in it) is the first, and PR #20 is a draft until
+  upstream PR #18 merges. Nothing upstream was labelled: contributions
+  there have no triage rights, so the fork's status taxonomy cannot be
+  applied — and nothing upstream is ever closed by the agent either.
 
 ## Verification
 
