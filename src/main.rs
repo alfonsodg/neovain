@@ -38,6 +38,11 @@ Options:
                      changes if it is long. full: always the diff. summary: always the summary
       --sw N         shiftwidth for > and < when the file indents with spaces (default 4)
       --timeout SECS default 10
+      --safe           agent-safe profile: only @anchor and :ex steps, ex commands from a fixed
+                       allow-list of buffer edits, and the target inside the workspace. Refuses
+                       anything it cannot read instead of running it. Requires --workspace
+      --workspace DIR  confine the target file to DIR: canonicalized, so `..` and symlinks that
+                       leave DIR are rejected. Usable alone; required with --safe
   --                 treat everything after as steps (for steps starting with '-')
   -h, --help         show this help
   -V, --version      show version
@@ -47,6 +52,8 @@ Environment:
   NEOVAIN_EX_ONLY=1  allow only @anchor and :ex steps: no normal-mode keys, no :normal/:execute,
                      no :!, :lua, :py, :perl, :ruby, :source, :runtime, :earlier/:later.
                      A style restriction for benchmarks, not a sandbox.
+  NEOVAIN_SAFE=1        same as --safe
+  NEOVAIN_WORKSPACE=DIR same as --workspace
 
 Exit status: 0 success, 1 a step failed or timed out (file unchanged), 2 usage/setup error.
 ";
@@ -59,6 +66,9 @@ struct Args {
     context: usize,
     sw: u32,
     timeout: Duration,
+    /// The agent-safe profile: an allow-list of buffer edits and a workspace root.
+    safe: bool,
+    workspace: Option<PathBuf>,
 }
 
 /// What to print after an edit that changed the file.
@@ -93,6 +103,7 @@ fn parse_args() -> Result<Option<Args>, String> {
     let mut diff = Mode::Auto;
     let mut positional = Vec::new();
     let mut only_steps = false;
+    let (mut safe, mut workspace) = (false, None::<PathBuf>);
     fn value<T: std::str::FromStr>(flag: &str, v: Option<String>) -> Result<T, String> {
         let v = v.ok_or_else(|| format!("{flag} needs a value"))?;
         v.parse().map_err(|_| format!("bad value for {flag}: {v:?}"))
@@ -120,15 +131,26 @@ fn parse_args() -> Result<Option<Args>, String> {
             "--timeout" => timeout = value(&a, it.next())?,
             "--diff" => diff = value(&a, it.next())?,
             s if s.starts_with("--diff=") => diff = value("--diff", s.split_once('=').map(|(_, v)| v.to_string()))?,
+            "--safe" => safe = true,
+            "--workspace" => workspace = Some(value(&a, it.next())?),
+            s if s.starts_with("--workspace=") => {
+                workspace = Some(value("--workspace", s.split_once('=').map(|(_, v)| v.to_string()))?)
+            }
             s if s.starts_with("--") => return Err(format!("unknown option {s}")),
             _ => positional.push(a),
         }
+    }
+    safe = safe || env::var("NEOVAIN_SAFE").is_ok_and(|v| v == "1");
+    workspace = workspace.or_else(|| env::var_os("NEOVAIN_WORKSPACE").filter(|v| !v.is_empty()).map(PathBuf::from));
+    if safe && workspace.is_none() {
+        return Err("the safe profile needs a workspace root: pass --workspace DIR or set NEOVAIN_WORKSPACE".into());
     }
     if positional.len() < 2 {
         return Err("need FILE and at least one STEP (see --help)".into());
     }
     let file = PathBuf::from(positional.remove(0));
-    Ok(Some(Args { file, steps: positional, dry_run, diff, context, sw, timeout: Duration::from_secs_f64(timeout) }))
+    let timeout = Duration::from_secs_f64(timeout);
+    Ok(Some(Args { file, steps: positional, dry_run, diff, context, sw, timeout, safe, workspace }))
 }
 
 /// Git Bash/MSYS rewrites args like '/foo<CR>' into 'C:/Program Files/Git/foo<CR>' before we see them.
@@ -234,9 +256,24 @@ fn run(a: Args) -> Result<(), Fail> {
     if !a.file.is_file() {
         return Err(Fail::Usage(format!("no such file: {}", a.file.display())));
     }
+    // Confinement resolves symlinks and `..` on both sides before anything else runs.
+    if let Some(root) = &a.workspace {
+        let root = fs::canonicalize(root).map_err(|e| Fail::Usage(format!("cannot use workspace {}: {e}", root.display())))?;
+        let target = fs::canonicalize(&a.file).map_err(|e| Fail::Usage(e.to_string()))?;
+        if !target.starts_with(&root) {
+            return Err(Fail::Usage(format!("{} is outside the workspace {}", a.file.display(), root.display())));
+        }
+    }
     for (i, s) in a.steps.iter().enumerate() {
         if let Some(why) = validate::write_or_quit_violation(s) {
             return Err(Fail::Usage(format!("step {} {s:?}: {why}", i + 1)));
+        }
+    }
+    if a.safe {
+        for (i, s) in a.steps.iter().enumerate() {
+            if let Some(why) = validate::safe_violation(s) {
+                return Err(Fail::Usage(format!("step {} {s:?}: {why}", i + 1)));
+            }
         }
     }
     if env::var_os("MSYSTEM").is_some() {

@@ -55,6 +55,7 @@
       <a href="#guarantees">guarantees</a>
       <a href="#agents">for agents</a>
       <a href="#ex-only">ex-only mode</a>
+      <a href="#safe">agent-safe profile</a>
       <a href="#windows">windows</a>
       <a href="#reference">reference</a>
     </nav>
@@ -264,6 +265,14 @@ WARNING: no blank line between 7 and 8, was 1</span></pre>
       <p>With <code>NEOVAIN_EX_ONLY=1</code>, only anchors and ex commands are accepted. Normal-mode keys, <code>:normal</code> and <code>:execute</code> are rejected, and so are the ex commands that leave the buffer (<code>:!</code>, <code>:lua</code>, <code>:py</code>, <code>:perl</code>, <code>:ruby</code>, <code>:source</code>, <code>:runtime</code>, <code>:earlier</code>/<code>:later</code>). Text goes in with <code>:a</code>, <code>:i</code> or <code>:c</code>. The benchmark harness uses it to test whether keystroke-level editing costs agents extra reasoning.</p>
       <p><strong>It is a style restriction, not a sandbox:</strong> ex commands are vimscript, so <code>:call system('…')</code> still runs a shell. It is not a filter for untrusted steps.</p>
 
+      <h2 id="safe">Agent-safe profile</h2>
+      <p>With <code>--safe</code> (or <code>NEOVAIN_SAFE=1</code>) and a workspace root, <code>--workspace DIR</code> (or <code>NEOVAIN_WORKSPACE=DIR</code>), every step runs under two independent controls. This is the profile for model-generated steps against a local project:</p>
+      <ul>
+        <li><strong>An allow-list instead of a deny-list.</strong> Only anchors and ex commands from a fixed list of buffer edits are accepted: <code>:s</code>, <code>:d</code>, <code>:m</code>, <code>:t</code>/<code>:co</code>, <code>:g</code>/<code>:v</code> (whose nested command goes through the same list), <code>:a</code>, <code>:i</code>, <code>:c</code>, <code>:j</code>, <code>:pu</code>, <code>:y</code>, <code>:sort</code>, <code>:retab</code> and <code>:undo</code>. Everything else is refused before Neovim starts: <code>:!</code>, <code>:call</code>, <code>:execute</code>, <code>:normal</code>, <code>:lua</code>, <code>:source</code>, <code>:read</code>, <code>:w</code>, chained commands, expression replacements, the <code>=</code> register, normal-mode keys, and anything the parser cannot read.</li>
+        <li><strong>The target must live in the workspace.</strong> Both paths are canonicalized, so <code>..</code> traversal and a symlink that leaves the directory are refused. <code>--workspace</code> on its own confines the target without the allow-list.</li>
+      </ul>
+      <p>A refused command or path is a usage error (exit <code>2</code>); a failing step stays a failed step (exit <code>1</code>, file unchanged). The default mode and <code>NEOVAIN_EX_ONLY=1</code> are untouched — the profile is opt-in. It confines the commands and the path inside one Neovim process; it is not a kernel sandbox.</p>
+
       <h2 id="windows">Windows</h2>
       <p>Under Git Bash, MSYS rewrites arguments that contain <code>/…</code> (like <code>/pat&lt;CR&gt;</code>) into Windows paths. Run neovain with <code>MSYS_NO_PATHCONV=1</code>. neovain detects the mangling and refuses to run rather than edit the wrong thing. With conversion off, pass a relative or Windows-style (<code>C:/…</code>) path for <code>FILE</code>. PowerShell and WSL have none of these issues.</p>
 
@@ -276,9 +285,13 @@ WARNING: no blank line between 7 and 8, was 1</span></pre>
           <tr><td><code>-C N</code></td><td>Lines of context in the diff (default 2).</td></tr>
           <tr><td><code>--sw N</code></td><td>Shiftwidth for <code>&gt;</code> and <code>&lt;</code> in space-indented files (default 4).</td></tr>
           <tr><td><code>--timeout SECS</code></td><td>Abort if Neovim takes longer (default 10). The diff behind a summary and the analysis of the change stop at it as well.</td></tr>
+          <tr><td><code>--safe</code></td><td>The agent-safe profile: anchors and allow-listed ex commands only, target inside the workspace. Requires a workspace root.</td></tr>
+          <tr><td><code>--workspace DIR</code></td><td>Confine the target file to DIR, resolving <code>..</code> and symlinks. Usable alone; required with <code>--safe</code>.</td></tr>
           <tr><td><code>--</code></td><td>Treat everything after it as steps, for steps that look like flags.</td></tr>
           <tr><td><code>NEOVAIN_NVIM</code></td><td>Path to the <code>nvim</code> binary.</td></tr>
           <tr><td><code>NEOVAIN_EX_ONLY=1</code></td><td>Allow only anchors and ex commands, and reject those that leave the buffer (shell, scripts, file writes, quit).</td></tr>
+          <tr><td><code>NEOVAIN_SAFE=1</code></td><td>Same as <code>--safe</code>.</td></tr>
+          <tr><td><code>NEOVAIN_WORKSPACE=DIR</code></td><td>Same as <code>--workspace</code>.</td></tr>
         </tbody>
       </table>
       <p>Exit status: <code>0</code> success, <code>1</code> a step failed or timed out (file unchanged), <code>2</code> usage or setup error.</p>
